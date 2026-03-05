@@ -1,0 +1,316 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 240 10% 4%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 8%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 10% 8%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 239 84% 67%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 188 94% 53%;
+        --secondary-foreground: 0 0% 0%;
+        --muted: 240 5% 26%;
+        --muted-foreground: 240 5% 65%;
+        --accent: 239 84% 67%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 6% 18%;
+        --input: 240 6% 18%;
+        --ring: 239 84% 67%;
+        --radius: 0.75rem;
+        --surface: 240 10% 8%;
+        --surface-elevated: 240 10% 12%;
+        --success: 142 71% 45%;
+        --warning: 38 92% 50%;
+        --chart-1: 239 84% 67%;
+        --chart-2: 188 94% 53%;
+        --chart-3: 142 71% 45%;
+        --chart-4: 38 92% 50%;
+        --chart-5: 0 84% 60%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+        font-feature-settings: "rlig" 1, "calt" 1;
+    }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+}
+
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+}
+
+/* Gradient text */
+.gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Glow effects */
+.glow-primary {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+.glow-primary-hover:hover {
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+}
+
+/* Glass morphism */
+.glass {
+    background: rgba(20, 20, 22, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Shimmer animation for loading */
+.shimmer {
+    background: linear-gradient(90deg,
+            hsl(var(--muted)) 0%,
+            hsl(var(--surface-elevated)) 50%,
+            hsl(var(--muted)) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+/* Video timeline styles */
+.timeline-segment {
+    @apply relative rounded-lg overflow-hidden cursor-pointer transition-all duration-200;
+}
+
+.timeline-segment:hover {
+    @apply ring-2 ring-primary;
+}
+
+.timeline-segment.active {
+    @apply ring-2 ring-secondary;
+}
+
+/* Drag and drop zone */
+.dropzone {
+    @apply border-2 border-dashed border-muted rounded-xl p-8 transition-all duration-300;
+}
+
+.dropzone.active {
+    @apply border-primary bg-primary/5;
+}
+
+/* Text layer on video */
+.text-layer-overlay {
+    @apply absolute pointer-events-none;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Animation classes for text layers - Enter animations (0.5s ease-in) */
+.text-anim-enter-slide-up {
+    animation: textSlideUpIn 0.5s ease-in forwards;
+}
+
+.text-anim-enter-slide-down {
+    animation: textSlideDownIn 0.5s ease-in forwards;
+}
+
+.text-anim-enter-fade {
+    animation: textFadeIn 0.5s ease-in forwards;
+}
+
+.text-anim-enter-scale {
+    animation: textScaleIn 0.5s ease-in forwards;
+}
+
+.text-anim-enter-none {
+    opacity: 1;
+}
+
+/* Exit animations (0.5s ease-out) */
+.text-anim-exit-slide-up {
+    animation: textSlideUpOut 0.5s ease-out forwards;
+}
+
+.text-anim-exit-slide-down {
+    animation: textSlideDownOut 0.5s ease-out forwards;
+}
+
+.text-anim-exit-fade {
+    animation: textFadeOut 0.5s ease-out forwards;
+}
+
+.text-anim-exit-scale {
+    animation: textScaleOut 0.5s ease-out forwards;
+}
+
+.text-anim-exit-none {
+    opacity: 0;
+}
+
+/* Hidden state */
+.text-anim-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Visible state (after animation completes) */
+.text-anim-visible {
+    opacity: 1;
+}
+
+/* Enter keyframes */
+@keyframes textSlideUpIn {
+    from {
+        transform: translateY(40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes textSlideDownIn {
+    from {
+        transform: translateY(-40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes textFadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes textScaleIn {
+    from {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Exit keyframes */
+@keyframes textSlideUpOut {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateY(-40px);
+        opacity: 0;
+    }
+}
+
+@keyframes textSlideDownOut {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateY(40px);
+        opacity: 0;
+    }
+}
+
+@keyframes textFadeOut {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes textScaleOut {
+    from {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    to {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+}
+
+/* Legacy animation classes (keep for compatibility) */
+.animate-slide-up {
+    animation: textSlideUpIn 0.5s ease-out forwards;
+}
+
+.animate-fade-in {
+    animation: textFadeIn 0.5s ease-out forwards;
+}
+
+/* Step wizard styles */
+.step-indicator {
+    @apply flex items-center justify-center w-10 h-10 rounded-full text-sm font-medium transition-all duration-300;
+}
+
+.step-indicator.completed {
+    @apply bg-primary text-primary-foreground;
+}
+
+.step-indicator.current {
+    @apply bg-primary text-primary-foreground ring-4 ring-primary/30;
+}
+
+.step-indicator.pending {
+    @apply bg-muted text-muted-foreground;
+}
+
+/* Video player controls */
+.video-controls {
+    @apply absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent;
+}
+
+/* Language flag badges */
+.language-badge {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-surface border border-border;
+}
+
+.language-badge.selected {
+    @apply bg-primary/20 border-primary text-primary;
+}

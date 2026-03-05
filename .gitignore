@@ -1,0 +1,35 @@
+# Node modules — never commit these
+node_modules/
+pod-translation-app/node_modules/
+
+# Next.js build output
+pod-translation-app/.next/
+pod-translation-app/out/
+pod-translation-app/build/
+
+# Environment files — contains API keys, never commit
+.env
+.env.local
+.env*.local
+pod-translation-app/.env
+pod-translation-app/.env.local
+pod-translation-app/.env*.local
+
+# Supabase temp files
+supabase/.temp/
+supabase/supabase/.temp/
+
+# macOS
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+pod-translation-app/next-env.d.ts
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vercel
+.vercel
