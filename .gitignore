@@ -33,3 +33,9 @@ yarn-error.log*
 
 # Vercel
 .vercel
+
+# agent
+.agents
+
+#Notebooks
+notebooks/
