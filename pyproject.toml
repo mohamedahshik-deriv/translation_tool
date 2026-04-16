@@ -1,0 +1,22 @@
+[project]
+name = "pod-translation-automation-26-03-2026"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "arabic-reshaper>=3.0.0",
+    "deepl>=1.18.0",
+    "fastapi>=0.115.0",
+    "ffmpeg-python>=0.2.0",
+    "fonttools>=4.0.0",
+    "httpx>=0.27.0",
+    "litellm>=1.40.0",
+    "pillow>=10.4.0",
+    "pydantic-settings>=2.0.0",
+    "python-bidi>=0.4.2",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+    "slowapi>=0.1.9",
+    "uvicorn[standard]>=0.30.0",
+]
