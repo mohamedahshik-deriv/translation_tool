@@ -48,6 +48,8 @@ export interface SafeZoneConfig {
     marginTop: number;
     /** 🟠 Top content margin — text must not start above this (px from top of frame, >= marginTop) */
     contentTop: number;
+    /** 🟠 Content top rectangle — width from left frame edge x=0 (px). When set, renders a rect (0,0)→(contentTopWidth, contentTop) instead of the margin band */
+    contentTopWidth?: number;
     /** 🔴 Action safe — bottom edge (px from bottom of frame) */
     marginBottom: number;
     /** 🔴 Action safe — left edge (px from left of frame) */
@@ -58,56 +60,87 @@ export interface SafeZoneConfig {
     subtitleBottom: number;
     /** 🟦 Subtitle zone — height of the subtitle band (px) */
     subtitleHeight: number;
+    /** 🟦 Subtitle zone — explicit width (px). When set, zone is centered in frame; omit to span margin-to-margin */
+    subtitleWidth?: number;
+    /** 🟩 Content bottom rectangle — width (px). When set, renders a rect from bottom upward */
+    contentBottomWidth?: number;
+    /** 🟩 Content bottom rectangle — height (px). Defaults to subtitleBottom when omitted */
+    contentBottomHeight?: number;
+    /** 🟩 Content bottom rectangle — which side to anchor to (default: 'left') */
+    contentBottomAlign?: 'left' | 'right';
     /** 🟨 Note/disclaimer zone — distance from bottom of frame to the BOTTOM of the note band (px) */
     noteBottom: number;
     /** 🟨 Note/disclaimer zone — height of the note band (px) */
     noteHeight: number;
+    /** 🟨 Note zone — explicit width (px). When set, zone is centered in frame; omit to span margin-to-margin */
+    noteWidth?: number;
 }
 
 export const SAFE_ZONES: Record<VideoResolution, SafeZoneConfig> = {
     '1080x1080': {
-        marginTop:      64,
-        contentTop:     192,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 222,
-        subtitleHeight: 80,   // TODO: confirm exact height
-        noteBottom:     64,   // TODO: confirm (currently equals marginBottom)
-        noteHeight:     80,   // TODO: confirm exact height
+        marginTop:          64,
+        contentTop:         192,
+        contentTopWidth:    300,
+        marginBottom:       64,
+        marginLeft:         64,
+        marginRight:        64,
+        subtitleBottom:      160,
+        subtitleHeight:      62,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 222,
+        noteBottom:          64,
+        noteHeight:         82,
+        noteWidth:          598,
     },
     '1080x1920': {
-        marginTop:      160,
-        contentTop:     160,
-        marginBottom:   320,
-        marginLeft:     128,
-        marginRight:    128,
-        subtitleBottom: 428,
-        subtitleHeight: 80,
-        noteBottom:     320,
-        noteHeight:     80,
+        marginTop:           160,
+        contentTop:          160,
+        marginBottom:        508,
+        marginLeft:          128,
+        marginRight:         128,
+        subtitleBottom:      414,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  192,
+        contentBottomHeight: 608,
+        contentBottomAlign:  'right',
+        noteBottom:          320,
+        noteHeight:          82,
+        noteWidth:           598,
     },
     '1920x1080': {
-        marginTop:      64,
-        contentTop:     64,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 173,
-        subtitleHeight: 80,
-        noteBottom:     64,
-        noteHeight:     80,
+        marginTop:           64,
+        contentTop:          192,
+        contentTopWidth:     300,
+        marginBottom:        64,
+        marginLeft:          64,
+        marginRight:         64,
+        subtitleBottom:      159,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 253,
+        contentBottomAlign:  'left',
+        noteBottom:          64,
+        noteHeight:          90,
+        noteWidth:           700,
     },
     '1080x1350': {
-        marginTop:      64,
-        contentTop:     192,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 173,
-        subtitleHeight: 80,
-        noteBottom:     64,
-        noteHeight:     80,
+        marginTop:          64,
+        contentTop:         192,
+        contentTopWidth:    300,
+        marginBottom:       64,
+        marginLeft:         64,
+        marginRight:        64,
+        subtitleBottom:      159,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 253,
+        noteBottom:          64,
+        noteHeight:          82,
+        noteWidth:           598,
     },
 };
 

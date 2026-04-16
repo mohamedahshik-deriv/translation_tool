@@ -2674,17 +2674,27 @@ function SceneVideoPlayer({
                     const z = SAFE_ZONES[resKey] ?? SAFE_ZONES['1080x1920'];
 
                     // Convert px values to % of canvas dimensions
-                    const pctTop    = (z.marginTop    / vh) * 100;
-                    const pctContentTop = (z.contentTop / vh) * 100;
-                    const pctBottom = (z.marginBottom / vh) * 100;
-                    const pctLeft   = (z.marginLeft   / vw) * 100;
-                    const pctRight  = (z.marginRight  / vw) * 100;
+                    const pctTop        = (z.marginTop    / vh) * 100;
+                    const pctContentTop = (z.contentTop   / vh) * 100;
+                    const pctBottom     = (z.marginBottom / vh) * 100;
+                    const pctLeft       = (z.marginLeft   / vw) * 100;
+                    const pctRight      = (z.marginRight  / vw) * 100;
 
                     const subtitleBottom = (z.subtitleBottom / vh) * 100;
                     const subtitleTop    = subtitleBottom + (z.subtitleHeight / vh) * 100;
+                    const subtitleLeft   = z.subtitleWidth ? (((vw - z.subtitleWidth) / 2) / vw) * 100 : pctLeft;
+                    const subtitleRight  = z.subtitleWidth ? (((vw - z.subtitleWidth) / 2) / vw) * 100 : pctRight;
 
                     const noteBottom = (z.noteBottom / vh) * 100;
                     const noteTop    = noteBottom + (z.noteHeight / vh) * 100;
+                    const noteLeft   = z.noteWidth ? (((vw - z.noteWidth) / 2) / vw) * 100 : pctLeft;
+                    const noteRight  = z.noteWidth ? (((vw - z.noteWidth) / 2) / vw) * 100 : pctRight;
+
+                    // Optional content-top / content-bottom rectangles
+                    const contentTopRectW      = z.contentTopWidth    ? (z.contentTopWidth    / vw) * 100 : null;
+                    const contentBottomRectW   = z.contentBottomWidth ? (z.contentBottomWidth / vw) * 100 : null;
+                    const contentBottomH       = ((z.contentBottomHeight ?? z.subtitleBottom) / vh) * 100;
+                    const contentBottomIsRight = z.contentBottomAlign === 'right';
 
                     return (
                         <div
@@ -2706,14 +2716,35 @@ function SceneVideoPlayer({
                             />
                             {/* 🔴 Action safe label */}
                             <div
-                                className="absolute text-[10px] font-mono text-red-400/80 px-1"
+                                className="absolute text-[6px] font-mono text-red-400/80 px-1"
                                 style={{ top: `${pctTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
                             >
                                 Safe ({z.marginTop}px top / {z.marginLeft}px sides)
                             </div>
 
-                            {/* 🟠 Top content margin — band between marginTop and contentTop */}
-                            {z.contentTop > z.marginTop && (
+                            {/* 🟠 Content top zone — rect (0,0)→(contentTopWidth, contentTop) or band between marginTop and contentTop */}
+                            {contentTopRectW !== null ? (
+                                <>
+                                    <div
+                                        className="absolute"
+                                        style={{
+                                            top: 0,
+                                            left: 0,
+                                            width: `${contentTopRectW}%`,
+                                            height: `${pctContentTop}%`,
+                                            background: 'rgba(251,146,60,0.20)',
+                                            borderRight: '1.5px dashed rgba(251,146,60,0.9)',
+                                            borderBottom: '1.5px dashed rgba(251,146,60,0.9)',
+                                        }}
+                                    />
+                                    <div
+                                        className="absolute text-[6px] font-mono text-orange-400/90 px-1"
+                                        style={{ top: `${pctContentTop + 0.5}%`, left: '0.5%' }}
+                                    >
+                                        Content top ({z.contentTopWidth}×{z.contentTop}px)
+                                    </div>
+                                </>
+                            ) : z.contentTop > z.marginTop && (
                                 <>
                                     <div
                                         className="absolute"
@@ -2729,7 +2760,7 @@ function SceneVideoPlayer({
                                         }}
                                     />
                                     <div
-                                        className="absolute text-[10px] font-mono text-orange-400/90 px-1"
+                                        className="absolute text-[6px] font-mono text-orange-400/90 px-1"
                                         style={{ top: `${pctContentTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
                                     >
                                         Content ({z.contentTop}px from top)
@@ -2737,42 +2768,71 @@ function SceneVideoPlayer({
                                 </>
                             )}
 
-                            {/* 🟦 Subtitle zone band */}
+                            {/* 🟦 Subtitle zone band — centered when subtitleWidth is set */}
                             <div
                                 className="absolute"
                                 style={{
                                     top: `${100 - subtitleTop}%`,
-                                    left: `${pctLeft}%`,
-                                    right: `${pctRight}%`,
+                                    left: `${subtitleLeft}%`,
+                                    right: `${subtitleRight}%`,
                                     bottom: `${subtitleBottom}%`,
                                     background: 'rgba(20,184,166,0.18)',
                                     border: '1px solid rgba(20,184,166,0.6)',
                                 }}
                             />
                             <div
-                                className="absolute text-[10px] font-mono text-teal-400/90 px-1"
-                                style={{ bottom: `${subtitleTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
+                                className="absolute text-[6px] font-mono text-teal-400/90 px-1"
+                                style={{ bottom: `${subtitleTop + 0.5}%`, left: `${subtitleLeft + 0.5}%` }}
                             >
-                                Subtitle ({z.subtitleBottom + z.subtitleHeight}px from bottom)
+                                Subtitle · {z.subtitleWidth ?? ''}×{z.subtitleHeight}px · {z.subtitleBottom + z.subtitleHeight}px from bottom
                             </div>
 
-                            {/* 🟨 Note / disclaimer zone band */}
+                            {/* 🟩 Content bottom rectangle — anchored bottom-left or bottom-right */}
+                            {contentBottomRectW !== null && (
+                                <>
+                                    <div
+                                        className="absolute"
+                                        style={{
+                                            bottom: 0,
+                                            ...(contentBottomIsRight
+                                                ? { right: 0, borderLeft: '1.5px dashed rgba(34,197,94,0.8)' }
+                                                : { left:  0, borderRight: '1.5px dashed rgba(34,197,94,0.8)' }
+                                            ),
+                                            width: `${contentBottomRectW}%`,
+                                            height: `${contentBottomH}%`,
+                                            background: 'rgba(34,197,94,0.15)',
+                                            borderTop: '1.5px dashed rgba(34,197,94,0.8)',
+                                        }}
+                                    />
+                                    <div
+                                        className="absolute text-[6px] font-mono text-green-400/90 px-1"
+                                        style={{
+                                            bottom: `${contentBottomH + 0.3}%`,
+                                            ...(contentBottomIsRight ? { right: '0.5%' } : { left: '0.5%' }),
+                                        }}
+                                    >
+                                        Content bottom<br />{z.contentBottomWidth}×{z.contentBottomHeight ?? z.subtitleBottom}px
+                                    </div>
+                                </>
+                            )}
+
+                            {/* 🟨 Note / disclaimer zone band — centered when noteWidth is set */}
                             <div
                                 className="absolute"
                                 style={{
                                     top: `${100 - noteTop}%`,
-                                    left: `${pctLeft}%`,
-                                    right: `${pctRight}%`,
+                                    left: `${noteLeft}%`,
+                                    right: `${noteRight}%`,
                                     bottom: `${noteBottom}%`,
                                     background: 'rgba(234,179,8,0.18)',
                                     border: '1px solid rgba(234,179,8,0.6)',
                                 }}
                             />
                             <div
-                                className="absolute text-[10px] font-mono text-yellow-400/90 px-1"
-                                style={{ bottom: `${noteBottom + 0.3}%`, left: `${pctLeft + 0.5}%` }}
+                                className="absolute text-[6px] font-mono text-yellow-400/90 px-1"
+                                style={{ bottom: `${noteTop + 0.3}%`, left: `${noteLeft + 0.5}%` }}
                             >
-                                Note ({z.noteBottom}px from bottom)
+                                Note · {z.noteWidth ?? ''}×{z.noteHeight}px · {z.noteBottom}px from bottom
                             </div>
 
                         </div>
