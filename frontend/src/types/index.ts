@@ -181,6 +181,89 @@ export interface VideoSegment {
 }
 
 // ============================================
+// Position Grid Types
+// ============================================
+
+export type GridPosition = 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR';
+
+/** Ordered labels for rendering the 3×3 grid left-to-right, top-to-bottom. */
+export const GRID_ORDER: GridPosition[] = ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'];
+
+export const GRID_POSITION_LABELS: Record<GridPosition, string> = {
+    TL: 'Top Left', TC: 'Top Center', TR: 'Top Right',
+    ML: 'Middle Left', MC: 'Middle Center', MR: 'Middle Right',
+    BL: 'Bottom Left', BC: 'Bottom Center', BR: 'Bottom Right',
+};
+
+export interface GridPositionConfig {
+    x: number;                          // px from left edge of native frame
+    y: number;                          // px from top edge of native frame
+    anchor: 'top' | 'middle' | 'bottom'; // vertical alignment anchor
+}
+
+/**
+ * Pixel-exact grid positions per resolution, derived from SAFE_ZONES margins.
+ * x/y are in the native video coordinate space (e.g. 1080×1920).
+ */
+export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPositionConfig>> = {
+    '1080x1920': {
+        TL: { x: 128,  y: 160,  anchor: 'top'    },
+        TC: { x: 540,  y: 160,  anchor: 'top'    },
+        TR: { x: 952,  y: 160,  anchor: 'top'    },
+        ML: { x: 128,  y: 960,  anchor: 'middle' },
+        MC: { x: 540,  y: 960,  anchor: 'middle' },
+        MR: { x: 952,  y: 960,  anchor: 'middle' },
+        BL: { x: 128,  y: 1412, anchor: 'bottom' },
+        BC: { x: 540,  y: 1412, anchor: 'bottom' },
+        BR: { x: 952,  y: 1412, anchor: 'bottom' },
+    },
+    '1920x1080': {
+        TL: { x: 64,   y: 64,   anchor: 'top'    },
+        TC: { x: 960,  y: 64,   anchor: 'top'    },
+        TR: { x: 1856, y: 64,   anchor: 'top'    },
+        ML: { x: 64,   y: 540,  anchor: 'middle' },
+        MC: { x: 960,  y: 540,  anchor: 'middle' },
+        MR: { x: 1856, y: 540,  anchor: 'middle' },
+        BL: { x: 64,   y: 1016, anchor: 'bottom' },
+        BC: { x: 960,  y: 1016, anchor: 'bottom' },
+        BR: { x: 1856, y: 1016, anchor: 'bottom' },
+    },
+    '1080x1080': {
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top-left block
+        TC: { x: 540,  y: 192,  anchor: 'top'    }, // same top boundary as TL for visual consistency
+        TR: { x: 1016, y: 192,  anchor: 'top'    }, // same top boundary
+        ML: { x: 64,   y: 540,  anchor: 'middle' },
+        MC: { x: 540,  y: 540,  anchor: 'middle' },
+        MR: { x: 1016, y: 540,  anchor: 'middle' },
+        BL: { x: 64,   y: 858,  anchor: 'bottom' }, // above 300×222 content-bottom block & subtitle zone
+        BC: { x: 540,  y: 858,  anchor: 'bottom' },
+        BR: { x: 1016, y: 858,  anchor: 'bottom' },
+    },
+    '1080x1350': {
+        TL: { x: 64,   y: 64,   anchor: 'top'    },
+        TC: { x: 540,  y: 64,   anchor: 'top'    },
+        TR: { x: 1016, y: 64,   anchor: 'top'    },
+        ML: { x: 64,   y: 675,  anchor: 'middle' },
+        MC: { x: 540,  y: 675,  anchor: 'middle' },
+        MR: { x: 1016, y: 675,  anchor: 'middle' },
+        BL: { x: 64,   y: 1286, anchor: 'bottom' },
+        BC: { x: 540,  y: 1286, anchor: 'bottom' },
+        BR: { x: 1016, y: 1286, anchor: 'bottom' },
+    },
+};
+
+/**
+ * Which grid positions are available for each resolution.
+ * Blocked positions render as disabled (greyed-out) in the UI.
+ */
+export const POSITION_CONSTRAINTS: Record<VideoResolution, GridPosition[]> = {
+    '1080x1920': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1920x1080': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1080x1080': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1080x1350': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+};
+
+// ============================================
 // Text Layer Types
 // ============================================
 
@@ -190,8 +273,9 @@ export interface TextLayer {
     id: string;
     segmentId: string;
     content: string;
-    positionX: number; // percentage 0-100
-    positionY: number; // percentage 0-100
+    positionX: number; // px in native video resolution
+    positionY: number; // px in native video resolution
+    positionAnchor?: 'top' | 'middle' | 'bottom'; // vertical alignment anchor
     fontFamily: string;
     fontSize: number;
     fontWeight?: number; // defaults to 800 (bold); use 400 for regular
@@ -206,8 +290,9 @@ export interface TextLayer {
 
 export const DEFAULT_TEXT_LAYER: Omit<TextLayer, 'id' | 'segmentId'> = {
     content: 'Enter text here',
-    positionX: 50,
-    positionY: 80,
+    positionX: 540,
+    positionY: 160,
+    positionAnchor: 'top',
     fontFamily: 'Inter',
     fontSize: 64,
     fontWeight: 800,

@@ -44,8 +44,9 @@ CONCAT_TIMEOUT = 300
 @dataclass
 class TextLayerCfg:
     content: str
-    positionX: float
-    positionY: float
+    positionX: float           # px in native video resolution
+    positionY: float           # px in native video resolution
+    positionAnchor: str        # 'top' | 'middle' | 'bottom'
     fontSize: int
     fontWeight: int
     color: str
@@ -90,6 +91,7 @@ def _parse_config(raw: str) -> ExportCfg:
                     content=tl["content"],
                     positionX=tl["positionX"],
                     positionY=tl["positionY"],
+                    positionAnchor=tl.get("positionAnchor", "middle"),
                     fontSize=tl["fontSize"],
                     fontWeight=tl.get("fontWeight", 800),
                     color=tl["color"],
@@ -170,6 +172,7 @@ async def _process_scene(
                 content=tl.content,
                 position_x=tl.positionX,
                 position_y=tl.positionY,
+                position_anchor=tl.positionAnchor,
                 font_size=tl.fontSize,
                 font_weight=tl.fontWeight,
                 color=tl.color,
