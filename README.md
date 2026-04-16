@@ -1,3 +1,8 @@
+# Translation Tool
+- Tool to translate videos to different language.
+- Translates the text and dubs the voice
+
+
 ## Python Version 
 Python 3.13.5
 
