@@ -1036,7 +1036,7 @@ function SceneTimeline({
 }
 
 function AnalyzeStepContent() {
-    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [detectedVoiceover, setDetectedVoiceover] = useState<boolean | null>(null); // null = not analyzed yet
@@ -1251,7 +1251,9 @@ function AnalyzeStepContent() {
             // Read whether the original video has audio (set by ffprobe in the API route)
             const videoHasAudio = processResp.headers.get('X-Has-Audio') === 'true';
             setVideoHasAudio(videoHasAudio);
-            console.log(`[process-video] videoHasAudio: ${videoHasAudio}`);
+            const suggestedColor = processResp.headers.get('X-Suggested-Text-Color');
+            if (suggestedColor) setSuggestedTextColor(suggestedColor);
+            console.log(`[process-video] videoHasAudio: ${videoHasAudio}, suggestedTextColor: ${suggestedColor ?? 'not set'}`);
             // Parse multipart response to get silent video + audio blobs
             const processedFormData = await processResp.formData();
             const silentBlob = processedFormData.get('silent') as File | null;
