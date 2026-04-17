@@ -279,3 +279,29 @@ export async function copywriteOverlays(overlays: string[]): Promise<CopywriteRe
     );
     return results;
 }
+
+// ============================================
+// Copywrite translate markup
+// ============================================
+
+export interface MarkupPair {
+    layerId: string;
+    source: string;       // English text with {red:PHRASE} markup
+    translation: string;  // Target-language plain text
+}
+
+export interface MarkupResult {
+    layerId: string;
+    marked: string;       // Translation with {red:...} applied
+}
+
+export async function copywriteTranslateMarkup(
+    pairs: MarkupPair[],
+    targetLang: string
+): Promise<MarkupResult[]> {
+    const { results } = await callEdgeFunction<{ results: MarkupResult[] }>(
+        'copywrite-translate-markup',
+        { pairs, targetLang }
+    );
+    return results;
+}

@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
 class StepErrorBoundary extends React.Component<
     { children: React.ReactNode },
@@ -1919,8 +1919,11 @@ interface TextLayerOverlay {
     positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
     fontWeight?: number; // defaults to 800 if not set
+    textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta'; // used to clamp auto-fit range; 'disclaimer' = 24px default, 16px if >3 lines, no clamp; 'cta' = ExtraBold 56–72px
+    maxLines?: number; // override for per-layer line limit (0 = unlimited)
     color: string;
     backgroundColor?: string;
+    textShadow?: string;
     animationType: string;
     startTime: number;
     endTime: number; // If endTime === -1, text stays visible until end of scene
@@ -1993,6 +1996,306 @@ function RichTextContent({ content, defaultColor }: { content: string; defaultCo
     );
 }
 
+type ExportOverlayLayer = {
+    id: string;
+    content: string;
+    positionX: number;
+    positionY: number;
+    positionAnchor?: 'top' | 'middle' | 'bottom';
+    fontSize: number;
+    fontWeight?: number;
+    color: string;
+    backgroundColor?: string;
+    maxLines: number;
+    textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta';
+};
+
+type RichToken = { text: string; color: string };
+type OverlayRenderResult = { blob: Blob | null; resolvedFontSize: number | null };
+type OverlayCacheEntry = { blob: Blob; resolvedFontSize: number | null };
+
+const OVERLAY_CACHE_MAX_ENTRIES = 400;
+const OVERLAY_RENDER_CONCURRENCY = 3;
+const OVERLAY_RENDER_DEBOUNCE_MS = 100;
+let overlayFontsReadyPromise: Promise<void> | null = null;
+const overlayRenderCache = new Map<string, OverlayCacheEntry>();
+const overlayRenderInflight = new Map<string, Promise<OverlayRenderResult>>();
+
+function buildOverlayKey(sceneIndex: number, layerIndex: number): string {
+    return `overlay_${sceneIndex}_${layerIndex}`;
+}
+
+function getHorizontalBounds(positionX: number, videoWidth: number): { left: number; right: number; align: 'left' | 'center' | 'right' } {
+    if (positionX <= videoWidth * 0.20) {
+        return { left: positionX, right: videoWidth * 0.88, align: 'left' };
+    }
+    if (positionX >= videoWidth * 0.80) {
+        return { left: videoWidth * 0.12, right: positionX, align: 'right' };
+    }
+    return { left: videoWidth * 0.12, right: videoWidth * 0.88, align: 'center' };
+}
+
+function tokenizeRichParts(content: string, defaultColor: string): RichToken[] {
+    const tokens: RichToken[] = [];
+    for (const part of parseRichText(content, defaultColor)) {
+        const pieces = part.text.split(/(\s+)/).filter((p) => p.length > 0);
+        for (const piece of pieces) tokens.push({ text: piece, color: part.color });
+    }
+    return tokens;
+}
+
+function wrapRichTokens(
+    ctx: CanvasRenderingContext2D,
+    tokens: RichToken[],
+    maxWidth: number,
+    maxLines: number
+): RichToken[][] {
+    const lines: RichToken[][] = [];
+    let current: RichToken[] = [];
+    const safeMaxWidth = Math.max(1, maxWidth);
+    const effectiveMaxLines = maxLines <= 0 ? Number.MAX_SAFE_INTEGER : maxLines;
+    const lineText = (line: RichToken[]) => line.map((t) => t.text).join('');
+
+    for (const token of tokens) {
+        const isSpace = /^\s+$/.test(token.text);
+        if (isSpace && current.length === 0) continue;
+
+        const candidate = lineText(current) + token.text;
+        if (!isSpace && current.length > 0 && ctx.measureText(candidate).width > safeMaxWidth) {
+            lines.push(current);
+            if (lines.length >= effectiveMaxLines) return lines;
+            current = [{ ...token, text: token.text.replace(/^\s+/, '') }];
+            continue;
+        }
+        current.push(token);
+    }
+
+    if (current.length > 0 && lines.length < effectiveMaxLines) lines.push(current);
+    return lines;
+}
+
+async function waitForOverlayFonts(): Promise<void> {
+    if (overlayFontsReadyPromise) return overlayFontsReadyPromise;
+    overlayFontsReadyPromise = (async () => {
+        if (!('fonts' in document)) return;
+        try {
+            await Promise.all([
+                document.fonts.load('800 64px Inter'),
+                document.fonts.load('400 24px Inter'),
+                document.fonts.load('800 64px "Noto Sans Arabic"'),
+            ]);
+            await document.fonts.ready;
+        } catch {
+            // Keep export robust if browser font API fails; fallback fonts still render.
+        }
+    })();
+    return overlayFontsReadyPromise;
+}
+
+function buildOverlayRenderCacheKey(
+    layer: ExportOverlayLayer,
+    videoWidth: number,
+    videoHeight: number
+): string {
+    return [
+        videoWidth,
+        videoHeight,
+        layer.content ?? '',
+        layer.positionX,
+        layer.positionY,
+        layer.positionAnchor ?? 'middle',
+        layer.fontSize ?? 0,
+        layer.fontWeight ?? 800,
+        layer.color ?? '',
+        layer.backgroundColor ?? '',
+        layer.maxLines ?? 2,
+        layer.textStyle ?? '',
+    ].join('|');
+}
+
+function drawRoundedRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    radius: number
+) {
+    const r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+}
+
+async function renderLayerOverlayToPng(
+    layer: ExportOverlayLayer,
+    videoWidth: number,
+    videoHeight: number
+): Promise<OverlayRenderResult> {
+    const plainContent = parseRichText(layer.content ?? '', layer.color ?? '#ffffff').map((p) => p.text).join('').trim();
+    if (!plainContent) return { blob: null, resolvedFontSize: null };
+
+    await waitForOverlayFonts();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(videoWidth));
+    canvas.height = Math.max(1, Math.round(videoHeight));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { blob: null, resolvedFontSize: null };
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const isArabic = hasArabicScript(layer.content ?? '');
+    const fontFamily = isArabic ? ARABIC_FONT_STACK : DEFAULT_FONT_STACK;
+    const fontWeight = isArabic ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
+    const textDirection: 'rtl' | 'ltr' = isArabic ? 'rtl' : 'ltr';
+    const bounds = getHorizontalBounds(layer.positionX, canvas.width);
+    const maxWidth = Math.max(1, bounds.right - bounds.left);
+    const resolveFittedFontSize = (): number => {
+        const maxLines = layer.maxLines <= 0 ? Number.MAX_SAFE_INTEGER : layer.maxLines;
+        if (layer.textStyle === 'disclaimer' || layer.maxLines === 0) {
+            const testDisclaimer = (size: number) => {
+                ctx.font = `${400} ${size}px ${fontFamily}`;
+                const wrapped = wrapRichTokens(ctx, tokenizeRichParts(layer.content, layer.color || '#ffffff'), maxWidth, Number.MAX_SAFE_INTEGER);
+                return wrapped.length;
+            };
+            return testDisclaimer(24) > 3 ? 16 : 24;
+        }
+
+        const byStyle = layer.textStyle === 'headline'
+            ? { min: 64, max: 128 }
+            : layer.textStyle === 'body'
+                ? { min: 24, max: 32 }
+                : layer.textStyle === 'cta'
+                    ? { min: 56, max: 72 }
+                    : { min: Math.max(8, Math.round(layer.fontSize || 24)), max: Math.max(8, Math.round(layer.fontSize || 24)) };
+
+        let lo = byStyle.min;
+        let hi = byStyle.max;
+        let best = byStyle.min;
+        while (lo <= hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            ctx.font = `${fontWeight} ${mid}px ${fontFamily}`;
+            const wrapped = wrapRichTokens(ctx, tokenizeRichParts(layer.content, layer.color || '#ffffff'), maxWidth, maxLines + 8);
+            if (wrapped.length <= maxLines) {
+                best = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return best;
+    };
+
+    const fontSize = Math.max(8, resolveFittedFontSize());
+    const lineHeight = (layer.textStyle === 'disclaimer' || layer.maxLines === 0) ? 1.4 : 1.0;
+    const lineHeightPx = Math.max(1, fontSize * lineHeight);
+
+    ctx.textBaseline = 'top';
+    (ctx as CanvasRenderingContext2D & { direction?: 'ltr' | 'rtl' }).direction = textDirection;
+    ctx.textAlign = isArabic ? 'right' : 'left';
+    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    const lines = wrapRichTokens(ctx, tokenizeRichParts(layer.content, layer.color || '#ffffff'), maxWidth, layer.maxLines);
+    if (lines.length === 0) return { blob: null, resolvedFontSize: fontSize };
+
+    const lineWidths = lines.map((line) => ctx.measureText(line.map((t) => t.text).join('')).width);
+    const totalHeight = lineHeightPx * lines.length;
+    const anchor = layer.positionAnchor ?? 'middle';
+    const startY =
+        anchor === 'top'
+            ? layer.positionY
+            : anchor === 'bottom'
+                ? layer.positionY - totalHeight
+                : layer.positionY - totalHeight / 2;
+
+    if (layer.backgroundColor) {
+        const blockWidth = Math.min(maxWidth, Math.max(...lineWidths));
+        const left = bounds.align === 'left'
+            ? bounds.left
+            : bounds.align === 'right'
+                ? bounds.right - blockWidth
+                : bounds.left + (maxWidth - blockWidth) / 2;
+        drawRoundedRect(ctx, left - 14, startY - 6, blockWidth + 28, totalHeight + 12, 6);
+        ctx.fillStyle = layer.backgroundColor;
+        ctx.fill();
+    }
+
+    for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const width = lineWidths[i];
+        const y = startY + (i * lineHeightPx);
+        if (isArabic) {
+            let x = bounds.align === 'left'
+                ? bounds.left + width
+                : bounds.align === 'right'
+                    ? bounds.right
+                    : bounds.left + ((maxWidth + width) / 2);
+            for (const token of line) {
+                ctx.fillStyle = token.color || layer.color || '#ffffff';
+                ctx.fillText(token.text, x, y);
+                x -= ctx.measureText(token.text).width;
+            }
+        } else {
+            let x = bounds.align === 'left'
+                ? bounds.left
+                : bounds.align === 'right'
+                    ? bounds.right - width
+                    : bounds.left + (maxWidth - width) / 2;
+            for (const token of line) {
+                ctx.fillStyle = token.color || layer.color || '#ffffff';
+                ctx.fillText(token.text, x, y);
+                x += ctx.measureText(token.text).width;
+            }
+        }
+    }
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((value) => resolve(value), 'image/png');
+    });
+    return { blob, resolvedFontSize: fontSize };
+}
+
+async function renderLayerOverlayCached(
+    layer: ExportOverlayLayer,
+    videoWidth: number,
+    videoHeight: number
+): Promise<OverlayRenderResult> {
+    const cacheKey = buildOverlayRenderCacheKey(layer, videoWidth, videoHeight);
+    const cached = overlayRenderCache.get(cacheKey);
+    if (cached) return { blob: cached.blob, resolvedFontSize: cached.resolvedFontSize };
+
+    const inflight = overlayRenderInflight.get(cacheKey);
+    if (inflight) return inflight;
+
+    const promise = renderLayerOverlayToPng(layer, videoWidth, videoHeight)
+        .then((result) => {
+            if (result.blob) {
+                overlayRenderCache.set(cacheKey, {
+                    blob: result.blob,
+                    resolvedFontSize: result.resolvedFontSize,
+                });
+                if (overlayRenderCache.size > OVERLAY_CACHE_MAX_ENTRIES) {
+                    const firstKey = overlayRenderCache.keys().next().value;
+                    if (firstKey) overlayRenderCache.delete(firstKey);
+                }
+            }
+            return result;
+        })
+        .finally(() => {
+            overlayRenderInflight.delete(cacheKey);
+        });
+
+    overlayRenderInflight.set(cacheKey, promise);
+    return promise;
+}
+
 const DEFAULT_FONT_STACK = 'Inter, sans-serif';
 const ARABIC_FONT_STACK = '"Noto Sans Arabic", sans-serif';
 const ARABIC_BOLD_WEIGHT = 800;
@@ -2007,6 +2310,7 @@ function AutoFitText({
     content,
     defaultColor,
     maxFontSize,
+    minFontSize = 10,
     lineHeight,
     maxLines,
     backgroundColor,
@@ -2016,10 +2320,13 @@ function AutoFitText({
     fontWeight = 800,
     fontFamily = DEFAULT_FONT_STACK,
     noClamp = false,
+    textShadow,
+    onFontSizeResolved,
 }: {
     content: string;
     defaultColor: string;
     maxFontSize: number;
+    minFontSize?: number;
     lineHeight: number;
     maxLines: number;
     backgroundColor?: string;
@@ -2029,9 +2336,18 @@ function AutoFitText({
     fontWeight?: number;
     fontFamily?: string;
     noClamp?: boolean;
+    textShadow?: string;
+    onFontSizeResolved?: (size: number) => void;
 }) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [fittedSize, setFittedSize] = useState(maxFontSize);
+    const lastEmittedSize = useRef<number | null>(null);
+    const onFontSizeResolvedRef = useRef(onFontSizeResolved);
+    onFontSizeResolvedRef.current = onFontSizeResolved;
+    const plainMeasureContent = useMemo(
+        () => parseRichText(content, defaultColor).map(p => p.text).join(''),
+        [content, defaultColor]
+    );
 
     const computeFit = useCallback((width: number) => {
         if (width <= 0) return;
@@ -2052,7 +2368,7 @@ function AutoFitText({
         ].join(';');
         document.body.appendChild(probe);
 
-        const minSize = 10;
+        const minSize = minFontSize;
         let lo = minSize;
         let hi = maxFontSize;
         let best = minSize;
@@ -2061,7 +2377,7 @@ function AutoFitText({
             const mid = Math.floor((lo + hi) / 2);
             probe.style.fontSize = `${mid}px`;
             probe.style.lineHeight = `${lineHeight}`;
-            probe.textContent = content;
+            probe.textContent = plainMeasureContent;
 
             const maxHeightPx = mid * lineHeight * maxLines + 2; // +2px tolerance
             if (probe.scrollHeight <= maxHeightPx) {
@@ -2074,7 +2390,11 @@ function AutoFitText({
 
         document.body.removeChild(probe);
         setFittedSize(best);
-    }, [content, maxFontSize, lineHeight, maxLines, fontWeight, fontFamily]);
+        if (onFontSizeResolvedRef.current && best !== lastEmittedSize.current) {
+            lastEmittedSize.current = best;
+            onFontSizeResolvedRef.current(best);
+        }
+    }, [plainMeasureContent, maxFontSize, minFontSize, lineHeight, maxLines, fontWeight, fontFamily]);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -2123,6 +2443,101 @@ function AutoFitText({
                     }),
                     lineHeight: lineHeight,
                     opacity: opacity,
+                    textShadow: textShadow,
+                    transition: 'font-size 0.1s ease',
+                }}
+            >
+                <RichTextContent content={content} defaultColor={defaultColor} />
+            </div>
+        </div>
+    );
+}
+
+// DisclaimerAutoFont: renders at 24px by default; switches to 16px when text
+// exceeds 3 lines at 24px. No line clamping — all lines are shown.
+// Measures at native resolution (nativeVideoWidth) and renders scaled to preview.
+function DisclaimerAutoFont({
+    content,
+    defaultColor,
+    nativeVideoWidth,
+    previewScale,
+    textAlign,
+    animClass,
+    opacity,
+    fontFamily = DEFAULT_FONT_STACK,
+    textShadow,
+    onFontSizeResolved,
+}: {
+    content: string;
+    defaultColor: string;
+    nativeVideoWidth: number;
+    previewScale: number;
+    textAlign: 'left' | 'center' | 'right';
+    animClass: string;
+    opacity?: number;
+    fontFamily?: string;
+    textShadow?: string;
+    onFontSizeResolved?: (nativePx: number) => void;
+}) {
+    const [nativeFontSize, setNativeFontSize] = useState(24);
+    const onFontSizeResolvedRef = useRef(onFontSizeResolved);
+    onFontSizeResolvedRef.current = onFontSizeResolved;
+    const lastEmittedRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (nativeVideoWidth <= 0) return;
+
+        // Measure at native resolution: 76% of native width (safe area) at 24px
+        const nativeSafeWidth = Math.round(nativeVideoWidth * 0.76);
+        const probe = document.createElement('div');
+        probe.style.cssText = [
+            'position:fixed',
+            'top:-9999px',
+            'left:-9999px',
+            'visibility:hidden',
+            'pointer-events:none',
+            `width:${nativeSafeWidth}px`,
+            'white-space:normal',
+            'word-break:break-word',
+            `font-family:${fontFamily}`,
+            'font-weight:400',
+            'font-size:24px',
+            'line-height:1.4',
+        ].join(';');
+        probe.textContent = content;
+        document.body.appendChild(probe);
+        const lineH = 24 * 1.4;
+        const lines = Math.round(probe.scrollHeight / lineH);
+        document.body.removeChild(probe);
+
+        const resolved = lines > 3 ? 16 : 24;
+        setNativeFontSize(resolved);
+        if (onFontSizeResolvedRef.current && resolved !== lastEmittedRef.current) {
+            lastEmittedRef.current = resolved;
+            onFontSizeResolvedRef.current(resolved);
+        }
+    }, [content, nativeVideoWidth, fontFamily]);
+
+    const previewFontSize = Math.max(6, Math.round(nativeFontSize * previewScale));
+
+    return (
+        <div style={{ width: '100%', lineHeight: 0 }}>
+            <div
+                className={animClass}
+                style={{
+                    fontSize: `${previewFontSize}px`,
+                    color: defaultColor,
+                    fontFamily,
+                    fontWeight: 400,
+                    maxWidth: '100%',
+                    width: '100%',
+                    textAlign,
+                    wordBreak: 'break-word' as const,
+                    display: 'block',
+                    overflow: 'visible',
+                    lineHeight: 1.4,
+                    opacity: opacity ?? 1,
+                    textShadow: textShadow,
                     transition: 'font-size 0.1s ease',
                 }}
             >
@@ -2150,6 +2565,8 @@ function SceneVideoPlayer({
     showSafeArea = false,
     videoWidth,
     videoHeight,
+    onLayerFontSizeResolved,
+    overlayRenderMode = 'dom',
 }: {
     videoUrl: string;
     startTime: number;
@@ -2171,6 +2588,10 @@ function SceneVideoPlayer({
     /** Known video dimensions — used to set the correct aspect ratio before the video loads (e.g. dummy data). */
     videoWidth?: number;
     videoHeight?: number;
+    /** Called when AutoFitText resolves a fitted font size for a layer. layerId + native-resolution px. */
+    onLayerFontSizeResolved?: (layerId: string, nativePx: number) => void;
+    /** 'canvas' renders pre-rasterized overlays (closer to export), 'dom' uses live DOM text. */
+    overlayRenderMode?: 'dom' | 'canvas';
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -2182,9 +2603,11 @@ function SceneVideoPlayer({
     const rVFCHandle = useRef<number | null>(null);
     const isDraggingRef = useRef(false);
     const wasPlayingRef = useRef(false);
+    const lastResolvedFontByLayerRef = useRef<Record<string, number>>({});
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(startTime);
     const [isLooping, setIsLooping] = useState(defaultLoop);
+    const [canvasOverlayUrls, setCanvasOverlayUrls] = useState<Record<string, string>>({});
     const isLoopingRef = useRef(defaultLoop);
     // Keep ref in sync so rVFC tick always reads the latest value without stale closure
     useEffect(() => { isLoopingRef.current = isLooping; }, [isLooping]);
@@ -2487,12 +2910,77 @@ function SceneVideoPlayer({
         )
     );
 
-    // Check if a text layer should be visible based on timing
-    // Always show if startTime is 0 and we're at the beginning
-    const isLayerVisible = (layer: TextLayerOverlay) => {
-        const rt = Math.max(0, relativeTime);
-        return rt >= layer.startTime && rt <= layer.endTime;
-    };
+    useEffect(() => {
+        if (overlayRenderMode !== 'canvas') {
+            setCanvasOverlayUrls((prev) => {
+                Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
+                return {};
+            });
+            return;
+        }
+
+        let cancelled = false;
+
+        const renderAll = async () => {
+            const next: Record<string, string> = {};
+            const vW = Math.max(1, Math.round(videoDims.width || videoWidth || 1080));
+            const vH = Math.max(1, Math.round(videoDims.height || videoHeight || 1920));
+            const layers = textLayers.map((layer) => ({
+                id: layer.id,
+                content: layer.content,
+                positionX: layer.positionX,
+                positionY: layer.positionY,
+                positionAnchor: layer.positionAnchor ?? 'middle',
+                fontSize: layer.fontSize,
+                fontWeight: layer.fontWeight ?? 800,
+                color: layer.color,
+                backgroundColor: layer.backgroundColor,
+                maxLines: layer.maxLines ?? (layer.textStyle === 'disclaimer' ? 0 : 2),
+                textStyle: layer.textStyle,
+            }));
+            let idx = 0;
+            const worker = async () => {
+                while (!cancelled) {
+                    const current = idx;
+                    idx += 1;
+                    if (current >= layers.length) break;
+                    const layer = layers[current];
+                    const rendered = await renderLayerOverlayCached(layer, vW, vH);
+                    if (
+                        rendered.resolvedFontSize !== null &&
+                        onLayerFontSizeResolved &&
+                        lastResolvedFontByLayerRef.current[layer.id] !== rendered.resolvedFontSize
+                    ) {
+                        lastResolvedFontByLayerRef.current[layer.id] = rendered.resolvedFontSize;
+                        onLayerFontSizeResolved(layer.id, rendered.resolvedFontSize);
+                    }
+                    if (cancelled || !rendered.blob) continue;
+                    next[layer.id] = URL.createObjectURL(rendered.blob);
+                }
+            };
+            await Promise.all(
+                Array.from({ length: Math.max(1, Math.min(OVERLAY_RENDER_CONCURRENCY, layers.length)) }, () => worker())
+            );
+
+            if (cancelled) {
+                Object.values(next).forEach((u) => URL.revokeObjectURL(u));
+                return;
+            }
+
+            setCanvasOverlayUrls((prev) => {
+                Object.values(prev).forEach((u) => URL.revokeObjectURL(u));
+                return next;
+            });
+        };
+
+        const t = window.setTimeout(() => {
+            renderAll();
+        }, OVERLAY_RENDER_DEBOUNCE_MS);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(t);
+        };
+    }, [overlayRenderMode, textLayers, videoDims.width, videoDims.height, videoWidth, videoHeight, onLayerFontSizeResolved]);
 
     return (
         <div
@@ -2586,6 +3074,27 @@ function SceneVideoPlayer({
 
                         // In editor mode, only show layers when in their time range (no ghosting)
                         const isInTimeRange = relativeTime >= layer.startTime && relativeTime <= effectiveEndTime;
+                        const animClass = isInTimeRange ? getAnimClass() : 'text-anim-hidden';
+
+                        if (overlayRenderMode === 'canvas') {
+                            const overlayUrl = canvasOverlayUrls[layer.id];
+                            return (
+                                <div
+                                    key={layer.id}
+                                    className="pointer-events-none absolute inset-0"
+                                    style={{ zIndex: 20, userSelect: 'none' }}
+                                >
+                                    {overlayUrl && (
+                                        <img
+                                            src={overlayUrl}
+                                            alt=""
+                                            draggable={false}
+                                            className={cn('w-full h-full pointer-events-none select-none', animClass)}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        }
 
                         // Determine text alignment based on horizontal position (px thresholds)
                         const vW = videoDims.width;
@@ -2628,19 +3137,26 @@ function SceneVideoPlayer({
                                     const isArabicLayer = hasArabicScript(layer.content ?? '');
                                     const layerFontFamily = isArabicLayer ? ARABIC_FONT_STACK : DEFAULT_FONT_STACK;
                                     const layerFontWeight = isArabicLayer ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
-                                    return ((layer.fontWeight ?? 800) <= 400 || layer.id.includes('disclaimer')) ? (
-                                        // Disclaimer layer: fine-print
-                                        // Use transform scale to bypass browser minimum font-size restrictions
-                                        // Renders at 14px then scales to 50% = visually 7px
-                                        <div
-                                            style={{
-                                                width: '100%',
-                                                overflow: 'visible',
-                                                opacity: !isInTimeRange ? 0 : undefined,
-                                            }}
-                                        >
+                                    return layer.textStyle === 'disclaimer' ? (
+                                        <DisclaimerAutoFont
+                                            content={layer.content}
+                                            defaultColor={layer.color}
+                                            nativeVideoWidth={videoDims.width || 1080}
+                                            previewScale={previewShortSide / (videoDims.width || 1080)}
+                                            textAlign={textAlign}
+                                            animClass={animClass}
+                                            opacity={!isInTimeRange ? 0 : undefined}
+                                            fontFamily={layerFontFamily}
+                                            textShadow={layer.textShadow}
+                                            onFontSizeResolved={onLayerFontSizeResolved ? (nativePx) => {
+                                                onLayerFontSizeResolved(layer.id, nativePx);
+                                            } : undefined}
+                                        />
+                                    ) : ((layer.fontWeight ?? 800) <= 400 || layer.id.includes('disclaimer')) ? (
+                                        // Legacy fine-print path: renders at 14px then scales to 50%
+                                        <div style={{ width: '100%', overflow: 'visible', opacity: !isInTimeRange ? 0 : undefined }}>
                                             <div
-                                                className={cn(isInTimeRange ? getAnimClass() : 'text-anim-hidden')}
+                                                className={cn(animClass)}
                                                 style={{
                                                     fontSize: '14px',
                                                     lineHeight: 1.4,
@@ -2665,15 +3181,28 @@ function SceneVideoPlayer({
                                         <AutoFitText
                                             content={layer.content}
                                             defaultColor={layer.color}
-                                            maxFontSize={Math.max(12, Math.round(layer.fontSize * (previewShortSide / 1080)))}
+                                            maxFontSize={Math.max(12, Math.round(
+                                                (layer.textStyle === 'headline' ? 128 : layer.textStyle === 'body' ? 32 : layer.textStyle === 'cta' ? 72 : layer.fontSize)
+                                                * (previewShortSide / 1080)
+                                            ))}
+                                            minFontSize={Math.max(6, Math.round(
+                                                (layer.textStyle === 'headline' ? 64 : layer.textStyle === 'body' ? 24 : layer.textStyle === 'cta' ? 56 : 10)
+                                                * (previewShortSide / 1080)
+                                            ))}
                                             lineHeight={1}
                                             maxLines={2}
                                             backgroundColor={layer.backgroundColor}
                                             textAlign={textAlign}
-                                            animClass={isInTimeRange ? getAnimClass() : 'text-anim-hidden'}
+                                            animClass={animClass}
                                             opacity={!isInTimeRange ? 0 : undefined}
                                             fontWeight={layerFontWeight}
                                             fontFamily={layerFontFamily}
+                                            textShadow={layer.textShadow}
+                                            onFontSizeResolved={(fittedPreviewPx) => {
+                                                const scale = previewShortSide > 0 ? 1080 / previewShortSide : 1;
+                                                const nativePx = Math.round(fittedPreviewPx * scale);
+                                                if (onLayerFontSizeResolved) onLayerFontSizeResolved(layer.id, nativePx);
+                                            }}
                                         />
                                     );
                                 })()}
@@ -3023,7 +3552,7 @@ function EditTextStepContent() {
             const outroCta  = { x: Math.round(vW / 2), y: Math.round(vH * 0.4922), anchor: 'middle' as const };
             const outroDisc = { x: Math.round(vW / 2), y: Math.round(vH * 0.7667), anchor: 'middle' as const };
             const mainPos = isOutro ? outroCta : tcPos;
-            const fontSize = isOutro ? outroConfig.ctaFontSize : 64;
+            const fontSize = isOutro ? outroConfig.ctaFontSize : 128;
             const startTime = isOutro ? 2 : 0;
 
             const newLayers: TextLayer[] = [...seg.textLayers];
@@ -3043,6 +3572,8 @@ function EditTextStepContent() {
                     positionAnchor: mainPos.anchor,
                     fontFamily: "Inter",
                     fontSize,
+                    fontWeight: isOutro ? undefined : 800,
+                    textStyle: isOutro ? undefined : 'headline',
                     color: isOutro ? "#181C25" : suggestedTextColor,
                     animationType: "slide-up",
                     animationDuration: 0.5,
@@ -3091,7 +3622,9 @@ function EditTextStepContent() {
                 positionY: defaultPos.y,
                 positionAnchor: defaultPos.anchor,
                 fontFamily: "Inter",
-                fontSize: 64,
+                fontSize: 128,
+                fontWeight: 800,
+                textStyle: 'headline',
                 color: suggestedTextColor,
                 animationType: "slide-up",
                 animationDuration: 0.5,
@@ -3134,7 +3667,7 @@ function EditTextStepContent() {
             const outroCta2  = { x: Math.round(vW2 / 2), y: Math.round(vH2 * 0.4922), anchor: 'middle' as const };
             const outroDisc2 = { x: Math.round(vW2 / 2), y: Math.round(vH2 * 0.7667), anchor: 'middle' as const };
             const mainPos2 = isOutro ? outroCta2 : tcPos2;
-            const fontSize = isOutro ? 40 : 64;
+            const fontSize = isOutro ? 40 : 128;
             const startTime = isOutro ? 2 : 0;
 
             // CTA layer — only if textOnScreen is present
@@ -3151,6 +3684,8 @@ function EditTextStepContent() {
                 positionAnchor: mainPos2.anchor,
                 fontFamily: "Inter",
                 fontSize,
+                fontWeight: isOutro ? undefined : 800,
+                textStyle: isOutro ? undefined : 'headline' as const,
                 color: isOutro ? "#181C25" : suggestedTextColor,
                 animationType: "slide-up" as const,
                 animationDuration: 0.5,
@@ -3210,6 +3745,7 @@ function EditTextStepContent() {
         positionAnchor: layer.positionAnchor,
         fontSize: layer.fontSize,
         fontWeight: layer.fontWeight ?? 800,
+        textStyle: layer.textStyle,
         color: layer.color,
         backgroundColor: layer.backgroundColor,
         animationType: layer.animationType,
@@ -3276,6 +3812,15 @@ function EditTextStepContent() {
                         showSafeArea={showSafeArea}
                         videoWidth={video.width}
                         videoHeight={video.height}
+                        overlayRenderMode="canvas"
+                        onLayerFontSizeResolved={(layerId, nativePx) => {
+                            if (currentSegment) {
+                                const layer = currentSegment.textLayers.find(l => l.id === layerId);
+                                if (layer?.textStyle) {
+                                    updateTextLayer(currentSegment.id, layerId, { fontSize: nativePx });
+                                }
+                            }
+                        }}
                     />
                     <p className="text-xs text-muted-foreground text-center">
                         {(() => {
@@ -3436,7 +3981,7 @@ function EditTextStepContent() {
                                                             checked={effectiveStyle === 'headline'}
                                                             onChange={() => updateTextLayer(currentSegment!.id, layer.id, {
                                                                 textStyle: 'headline',
-                                                                fontSize: 64,
+                                                                fontSize: 128,
                                                                 fontWeight: 800,
                                                             })}
                                                             className="accent-primary"
@@ -3476,18 +4021,27 @@ function EditTextStepContent() {
 
                                             {/* Style controls row */}
                                             <div className="grid grid-cols-3 gap-2">
-                                                {/* Font size — options filtered by style */}
+                                                {/* Font size — auto-fit display when textStyle set, manual dropdown otherwise */}
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Size</label>
-                                                    <select
-                                                        value={layer.fontSize}
-                                                        onChange={(e) => updateTextLayer(currentSegment!.id, layer.id, { fontSize: Number(e.target.value) })}
-                                                        className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs"
-                                                    >
-                                                        {(effectiveStyle === 'headline' ? headlineSizes : bodySizes).map(size => (
-                                                            <option key={size} value={size}>{size}px</option>
-                                                        ))}
-                                                    </select>
+                                                    {layer.textStyle ? (
+                                                        <div
+                                                            className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
+                                                            title={`Auto-fit: ${effectiveStyle === 'headline' ? '64–128' : '24–32'}px range`}
+                                                        >
+                                                            {layer.fontSize}px <span className="text-[9px] opacity-60">auto</span>
+                                                        </div>
+                                                    ) : (
+                                                        <select
+                                                            value={layer.fontSize}
+                                                            onChange={(e) => updateTextLayer(currentSegment!.id, layer.id, { fontSize: Number(e.target.value) })}
+                                                            className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs"
+                                                        >
+                                                            {(effectiveStyle === 'headline' ? headlineSizes : bodySizes).map(size => (
+                                                                <option key={size} value={size}>{size}px</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
                                                 </div>
 
                                                 {/* Base Color */}
@@ -3806,12 +4360,73 @@ function TranslateStepContent() {
     const translationsDone = Object.keys(translateProgress).length > 0 &&
         Object.values(translateProgress).every(s => s === 'done' || s === 'error');
 
+    // Per-language highlight state: 'idle' | 'running' | 'done' | 'error'
+    const [highlightStatus, setHighlightStatus] = useState<Record<string, 'idle' | 'running' | 'done' | 'error'>>({});
+    const [highlightError, setHighlightError] = useState<string | null>(null);
+
+    // Derived helpers
+    const isApplyingHighlights = Object.values(highlightStatus).some(s => s === 'running');
+    const highlightDone = new Set(Object.entries(highlightStatus).filter(([, s]) => s === 'done').map(([k]) => k));
+
     // Collect all text layers across all segments
     const allLayers = segments.flatMap(seg => seg.textLayers.map(l => ({ ...l, segmentId: seg.id })));
+
+    // Run Gemini markup + \u00A0 processing for a single language.
+    // Safe to call concurrently for multiple languages — no shared lock.
+    const applyHighlightsToTranslations = async (langCode: string) => {
+        setHighlightStatus(prev => ({ ...prev, [langCode]: 'running' }));
+        setHighlightError(null);
+
+        try {
+            const { copywriteTranslateMarkup } = await import('@/lib/supabase');
+
+            const isArabicLang = langCode.toUpperCase() === 'AR';
+
+            // For Arabic: send ALL layers (red markup + non-breaking space insertion).
+            // For other languages: send only layers with {red:...} markup.
+            const pairs = allLayers
+                .filter(layer => {
+                    if (/\{red:[^}]+\}/.test(layer.content)) return true;
+                    if (isArabicLang) {
+                        const tr = (useAppStore.getState().translations.get(layer.id) ?? [])
+                            .find(t => t.languageCode === langCode);
+                        return tr?.translatedContent && /[\u0600-\u06FF]/.test(tr.translatedContent);
+                    }
+                    return false;
+                })
+                .map(layer => {
+                    const tr = (useAppStore.getState().translations.get(layer.id) ?? [])
+                        .find(t => t.languageCode === langCode);
+                    return {
+                        layerId: layer.id,
+                        source: layer.content,
+                        translation: tr?.translatedContent ?? layer.content,
+                    };
+                });
+
+            if (pairs.length === 0) {
+                setHighlightStatus(prev => ({ ...prev, [langCode]: 'done' }));
+                return;
+            }
+
+            const results = await copywriteTranslateMarkup(pairs, langCode);
+
+            results.forEach(({ layerId, marked }) => {
+                updateTranslation(layerId, langCode as import('@/types').LanguageCode, marked);
+            });
+
+            setHighlightStatus(prev => ({ ...prev, [langCode]: 'done' }));
+        } catch (err) {
+            setHighlightStatus(prev => ({ ...prev, [langCode]: 'error' }));
+            setHighlightError(err instanceof Error ? err.message : 'Failed to apply highlights');
+        }
+    };
 
     const startTranslation = async () => {
         if (selectedLanguages.length === 0 || allLayers.length === 0) return;
         setIsTranslating(true);
+        setHighlightStatus({});
+        setHighlightError(null);
 
         // Build plain-text array and extract red words (strip color markup for DeepL)
         const parsed = allLayers.map(l => stripColorMarkup(l.content));
@@ -3918,6 +4533,11 @@ function TranslateStepContent() {
                     }
                 }
             }
+            // After all translations are stored, fire Gemini markup + \u00A0 post-processing
+            // for every target language concurrently (each language is independent).
+            if (targetLangs.length > 0) {
+                Promise.all(targetLangs.map(lang => applyHighlightsToTranslations(lang)));
+            }
         } catch (err) {
             console.error('Translation failed:', err);
             alert(`Translation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -3940,6 +4560,7 @@ function TranslateStepContent() {
             positionAnchor: layer.positionAnchor,
             fontSize: layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
+            textStyle: layer.textStyle,
             color: layer.color,
             backgroundColor: layer.backgroundColor,
             animationType: layer.animationType,
@@ -4030,6 +4651,35 @@ function TranslateStepContent() {
                         })}
                     </div>
 
+                    {/* Copywrite highlights — runs automatically after translation for all languages */}
+                    {(() => {
+                        const isSourceLang = activePreviewLang === textSrcLangCode;
+                        if (isSourceLang) return null;
+                        const langStatus = highlightStatus[activePreviewLang] ?? 'idle';
+                        if (langStatus === 'running') return (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-400">
+                                <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
+                                <span>Applying copywrite highlights…</span>
+                            </div>
+                        );
+                        if (langStatus === 'error') return (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                <span>{highlightError ?? 'Failed to apply highlights'}</span>
+                                <button
+                                    onClick={() => applyHighlightsToTranslations(activePreviewLang)}
+                                    className="ml-auto underline hover:no-underline"
+                                >
+                                    Retry
+                                </button>
+                                <button onClick={() => setHighlightError(null)}>
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        );
+                        return null;
+                    })()}
+
                     {/* Scene tabs */}
                     <div className="flex gap-1.5 flex-wrap">
                         {segments.map((seg, i) => (
@@ -4057,6 +4707,7 @@ function TranslateStepContent() {
                             textLayers={previewTextLayers}
                             fps={video.frameRate ?? 30}
                             videoFile={video.file}
+                            overlayRenderMode="canvas"
                         />
                     )}
 
@@ -4069,10 +4720,12 @@ function TranslateStepContent() {
                             const isEditing = editingTranslation === editKey;
                             return (
                                 <div key={layer.id} className="p-2.5 rounded-lg bg-surface-elevated border border-border text-xs space-y-1.5">
-                                    {/* Original text */}
+                                    {/* Original text — render rich markup so red highlights are visible */}
                                     <div>
                                         <span className="text-muted-foreground">Original: </span>
-                                        <span className="text-foreground">{layer.content.replace(/\{(?:red|white|dark|#[0-9a-fA-F]{6}):([^}]+)\}/g, '$1')}</span>
+                                        <span className="text-foreground font-medium">
+                                            <RichTextContent content={layer.content} defaultColor="currentColor" />
+                                        </span>
                                     </div>
 
                                     {/* Translation row */}
@@ -4132,7 +4785,7 @@ function TranslateStepContent() {
                                                 </div>
                                             ) : (
                                                 <span className="text-primary font-medium block">
-                                                    {tr.translatedContent.replace(/\{(?:red|white|dark|#[0-9a-fA-F]{6}):([^}]+)\}/g, '$1')}
+                                                    <RichTextContent content={tr.translatedContent} defaultColor="#a78bfa" />
                                                 </span>
                                             )}
                                         </div>
@@ -4539,6 +5192,7 @@ function DubPreviewPlayer({
             positionAnchor: layer.positionAnchor,
             fontSize: layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
+            textStyle: layer.textStyle,
             color: layer.color,
             backgroundColor: layer.backgroundColor,
             animationType: layer.animationType,
@@ -4655,6 +5309,7 @@ function DubPreviewPlayer({
                         onSceneEnd={handleSceneEnd}
                         forceMuted={shouldForceMute ? true : undefined}
                         playbackRate={computedPlaybackRate}
+                        overlayRenderMode="canvas"
                     />
                 );
             })()}
@@ -5219,6 +5874,8 @@ function DubStepContent() {
 
 function OutroStepContent() {
     const { setCurrentStep, outroConfig, setOutroConfig, segments, setSegments, video, scriptEntries, selectedLanguages, detectedVoiceoverLanguage } = useAppStore();
+    const [ctaFontSize, setCtaFontSize] = useState<number>(64);
+    const [resolvedDisclaimerFontSize, setResolvedDisclaimerFontSize] = useState<number>(24);
 
     // Pre-populate CTA + disclaimer from script entries / existing segment layers if not already set
     useEffect(() => {
@@ -5257,11 +5914,12 @@ function OutroStepContent() {
             positionX: Math.round(_outroVW / 2),
             positionY: Math.round(_outroVH * 0.4922),
             positionAnchor: 'middle',
-            fontSize: outroConfig.ctaFontSize,
+            fontSize: ctaFontSize,
+            fontWeight: 800,
             color: '#181C25',
-            backgroundColor: undefined,
+            textShadow: '0 1px 6px rgba(255,255,255,0.8), 0 0 12px rgba(255,255,255,0.5)',
             animationType: 'slide-up',
-            startTime: 0,
+            startTime: 2,
             endTime: -1,
         });
     }
@@ -5274,10 +5932,11 @@ function OutroStepContent() {
             positionAnchor: 'middle',
             fontSize: 24,
             fontWeight: 400,
+            textStyle: 'disclaimer',
             color: '#181C25',
-            backgroundColor: undefined,
+            textShadow: '0 1px 4px rgba(255,255,255,0.8), 0 0 8px rgba(255,255,255,0.5)',
             animationType: 'fade',
-            startTime: 0,
+            startTime: 2,
             endTime: -1,
         });
     }
@@ -5361,7 +6020,7 @@ function OutroStepContent() {
                     positionY: Math.round(_saveVH * 0.4922),
                     positionAnchor: 'middle' as const,
                     fontFamily: "Inter",
-                    fontSize: outroConfig.ctaFontSize,
+                    fontSize: ctaFontSize,
                     fontWeight: 800,
                     color: "#181C25",
                     animationType: "slide-up" as const,
@@ -5380,8 +6039,9 @@ function OutroStepContent() {
                     positionY: Math.round(_saveVH * 0.7667),
                     positionAnchor: 'middle' as const,
                     fontFamily: "Inter",
-                    fontSize: 24,
+                    fontSize: resolvedDisclaimerFontSize,
                     fontWeight: 400,
+                    textStyle: 'disclaimer' as const,
                     color: "#181C25",
                     animationType: "fade" as const,
                     animationDuration: 0.5,
@@ -5421,6 +6081,12 @@ function OutroStepContent() {
                         textLayers={previewLayers}
                         fps={video.frameRate ?? 30}
                         videoFile={video.file}
+                        overlayRenderMode="canvas"
+                        onLayerFontSizeResolved={(layerId, nativePx) => {
+                            if (layerId === 'preview-disclaimer') {
+                                setResolvedDisclaimerFontSize(nativePx);
+                            }
+                        }}
                     />
                 </div>
             )}
@@ -5433,7 +6099,7 @@ function OutroStepContent() {
                             <span className="text-[10px] font-bold text-primary">1</span>
                         </div>
                         <label className="text-sm font-medium">CTA Text</label>
-                        <span className="text-xs text-muted-foreground ml-auto">49% from top • {outroConfig.ctaFontSize}px • slide-up at 2s</span>
+                        <span className="text-xs text-muted-foreground ml-auto">49% from top • {ctaFontSize}px • slide-up at 2s</span>
                     </div>
                     <input
                         type="text"
@@ -5442,16 +6108,16 @@ function OutroStepContent() {
                         onChange={(e) => setOutroConfig({ ctaText: e.target.value })}
                         className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none text-sm"
                     />
-                    {/* CTA font controls — below input */}
+                    {/* CTA font controls — manual size selection */}
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">Size</span>
                         <select
-                            value={outroConfig.ctaFontSize}
-                            onChange={(e) => setOutroConfig({ ctaFontSize: Number(e.target.value) })}
-                            className="px-2 py-1.5 rounded bg-background border border-border text-xs"
+                            value={ctaFontSize}
+                            onChange={(e) => setCtaFontSize(Number(e.target.value))}
+                            className="px-2 py-1.5 rounded bg-background border border-border text-xs text-foreground focus:outline-none focus:border-primary"
                         >
-                            {[56, 60, 64, 68, 72].map(size => (
-                                <option key={size} value={size}>{size}px</option>
+                            {[56, 58, 60, 62, 64, 66, 68, 70, 72].map(s => (
+                                <option key={s} value={s}>{s}px</option>
                             ))}
                         </select>
                         <span className="text-xs font-extrabold text-muted-foreground">Inter ExtraBold</span>
@@ -5465,7 +6131,7 @@ function OutroStepContent() {
                             <span className="text-[10px] font-bold text-amber-400">2</span>
                         </div>
                         <label className="text-sm font-medium">Disclaimer Text</label>
-                        <span className="text-xs text-muted-foreground ml-auto">77% from top • 24px • fade at 2s</span>
+                        <span className="text-xs text-muted-foreground ml-auto">77% from top • {resolvedDisclaimerFontSize}px auto • fade at 2s</span>
                     </div>
                     {scriptEntries[segments.findIndex(s => s.isOutro) >= 0 ? segments.findIndex(s => s.isOutro) : segments.length - 1]?.disclaimer && !outroConfig.disclaimerText && (
                         <div className="flex items-center gap-1.5 text-xs text-primary">
@@ -5480,10 +6146,15 @@ function OutroStepContent() {
                         rows={3}
                         className="w-full px-3 py-2 rounded-lg bg-background border border-border focus:border-primary focus:outline-none resize-none text-sm"
                     />
-                    {/* Disclaimer font info — fixed, below input */}
+                    {/* Disclaimer font info — auto-computed */}
                     <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">Size</span>
-                        <span className="px-2 py-1.5 rounded bg-background border border-border text-xs text-foreground">24px</span>
+                        <div
+                            className="px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
+                            title="24px default; switches to 16px if text exceeds 3 lines"
+                        >
+                            {resolvedDisclaimerFontSize}px <span className="text-[9px] opacity-60">auto</span>
+                        </div>
                         <span className="text-xs font-normal text-muted-foreground">Inter Regular</span>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
@@ -5610,6 +6281,8 @@ function ExportStepContent() {
                             stayTillEnd: layer.endTime === -1,
                             startTime: layer.startTime * scale,
                             endTime: layer.endTime === -1 ? outputDuration : layer.endTime * scale,
+                            maxLines: layer.textStyle === 'disclaimer' ? 0 : 2,
+                            textStyle: layer.textStyle,
                         };
                     });
 
@@ -5623,10 +6296,28 @@ function ExportStepContent() {
                 };
             });
 
+            const overlayUploads: { key: string; blob: Blob }[] = [];
+            for (const sceneCfg of sceneConfigs) {
+                for (let li = 0; li < sceneCfg.textLayers.length; li += 1) {
+                    const textLayer = sceneCfg.textLayers[li] as ExportOverlayLayer & { overlayFileKey?: string };
+                    const rendered = await renderLayerOverlayCached(textLayer, video.width, video.height);
+                    if (rendered.resolvedFontSize !== null) {
+                        textLayer.fontSize = rendered.resolvedFontSize;
+                    }
+                    if (!rendered.blob) continue;
+                    const overlayKey = buildOverlayKey(sceneCfg.index, li);
+                    textLayer.overlayFileKey = overlayKey;
+                    overlayUploads.push({ key: overlayKey, blob: rendered.blob });
+                }
+            }
+
             const formData = new FormData();
             formData.append('video', video.file);
             audioBlobsPerScene.forEach((blob, i) => {
                 if (blob) formData.append(`audio_${i}`, blob, `audio_${i}.mp3`);
+            });
+            overlayUploads.forEach((overlay) => {
+                formData.append(overlay.key, overlay.blob, `${overlay.key}.png`);
             });
             formData.append('config', JSON.stringify({
                 lang,
