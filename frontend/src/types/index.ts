@@ -215,18 +215,18 @@ export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPos
         MR: { x: 952,  y: 960,  anchor: 'middle' },
         BL: { x: 128,  y: 1412, anchor: 'bottom' },
         BC: { x: 540,  y: 1412, anchor: 'bottom' },
-        BR: { x: 952,  y: 1412, anchor: 'bottom' },
+        BR: { x: 888,  y: 1412, anchor: 'bottom' }, // right edge at 1080-192=888 to clear content-bottom block
     },
     '1920x1080': {
-        TL: { x: 64,   y: 64,   anchor: 'top'    },
-        TC: { x: 960,  y: 64,   anchor: 'top'    },
-        TR: { x: 1856, y: 64,   anchor: 'top'    },
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block
+        TC: { x: 960,  y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
+        TR: { x: 1856, y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
         ML: { x: 64,   y: 540,  anchor: 'middle' },
         MC: { x: 960,  y: 540,  anchor: 'middle' },
         MR: { x: 1856, y: 540,  anchor: 'middle' },
-        BL: { x: 64,   y: 1016, anchor: 'bottom' },
-        BC: { x: 960,  y: 1016, anchor: 'bottom' },
-        BR: { x: 1856, y: 1016, anchor: 'bottom' },
+        BL: { x: 64,   y: 827,  anchor: 'bottom' }, // above subtitle/content-bottom zone
+        BC: { x: 960,  y: 827,  anchor: 'bottom' },
+        BR: { x: 1856, y: 827,  anchor: 'bottom' },
     },
     '1080x1080': {
         TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top-left block
@@ -240,15 +240,15 @@ export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPos
         BR: { x: 1016, y: 858,  anchor: 'bottom' },
     },
     '1080x1350': {
-        TL: { x: 64,   y: 64,   anchor: 'top'    },
-        TC: { x: 540,  y: 64,   anchor: 'top'    },
-        TR: { x: 1016, y: 64,   anchor: 'top'    },
-        ML: { x: 64,   y: 675,  anchor: 'middle' },
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block
+        TC: { x: 540,  y: 192,  anchor: 'top'    },
+        TR: { x: 1016, y: 192,  anchor: 'top'    },
+        ML: { x: 64,   y: 675,  anchor: 'middle' }, // vertical center
         MC: { x: 540,  y: 675,  anchor: 'middle' },
         MR: { x: 1016, y: 675,  anchor: 'middle' },
-        BL: { x: 64,   y: 1286, anchor: 'bottom' },
-        BC: { x: 540,  y: 1286, anchor: 'bottom' },
-        BR: { x: 1016, y: 1286, anchor: 'bottom' },
+        BL: { x: 64,   y: 1097, anchor: 'bottom' }, // above subtitle/content-bottom zone
+        BC: { x: 540,  y: 1097, anchor: 'bottom' },
+        BR: { x: 1016, y: 1097, anchor: 'bottom' },
     },
 };
 
