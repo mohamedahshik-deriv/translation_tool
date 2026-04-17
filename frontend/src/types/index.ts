@@ -48,6 +48,8 @@ export interface SafeZoneConfig {
     marginTop: number;
     /** 🟠 Top content margin — text must not start above this (px from top of frame, >= marginTop) */
     contentTop: number;
+    /** 🟠 Content top rectangle — width from left frame edge x=0 (px). When set, renders a rect (0,0)→(contentTopWidth, contentTop) instead of the margin band */
+    contentTopWidth?: number;
     /** 🔴 Action safe — bottom edge (px from bottom of frame) */
     marginBottom: number;
     /** 🔴 Action safe — left edge (px from left of frame) */
@@ -58,56 +60,87 @@ export interface SafeZoneConfig {
     subtitleBottom: number;
     /** 🟦 Subtitle zone — height of the subtitle band (px) */
     subtitleHeight: number;
+    /** 🟦 Subtitle zone — explicit width (px). When set, zone is centered in frame; omit to span margin-to-margin */
+    subtitleWidth?: number;
+    /** 🟩 Content bottom rectangle — width (px). When set, renders a rect from bottom upward */
+    contentBottomWidth?: number;
+    /** 🟩 Content bottom rectangle — height (px). Defaults to subtitleBottom when omitted */
+    contentBottomHeight?: number;
+    /** 🟩 Content bottom rectangle — which side to anchor to (default: 'left') */
+    contentBottomAlign?: 'left' | 'right';
     /** 🟨 Note/disclaimer zone — distance from bottom of frame to the BOTTOM of the note band (px) */
     noteBottom: number;
     /** 🟨 Note/disclaimer zone — height of the note band (px) */
     noteHeight: number;
+    /** 🟨 Note zone — explicit width (px). When set, zone is centered in frame; omit to span margin-to-margin */
+    noteWidth?: number;
 }
 
 export const SAFE_ZONES: Record<VideoResolution, SafeZoneConfig> = {
     '1080x1080': {
-        marginTop:      64,
-        contentTop:     192,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 222,
-        subtitleHeight: 80,   // TODO: confirm exact height
-        noteBottom:     64,   // TODO: confirm (currently equals marginBottom)
-        noteHeight:     80,   // TODO: confirm exact height
+        marginTop:          64,
+        contentTop:         192,
+        contentTopWidth:    300,
+        marginBottom:       64,
+        marginLeft:         64,
+        marginRight:        64,
+        subtitleBottom:      160,
+        subtitleHeight:      62,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 222,
+        noteBottom:          64,
+        noteHeight:         82,
+        noteWidth:          598,
     },
     '1080x1920': {
-        marginTop:      160,
-        contentTop:     160,
-        marginBottom:   320,
-        marginLeft:     128,
-        marginRight:    128,
-        subtitleBottom: 428,
-        subtitleHeight: 80,
-        noteBottom:     320,
-        noteHeight:     80,
+        marginTop:           160,
+        contentTop:          160,
+        marginBottom:        508,
+        marginLeft:          128,
+        marginRight:         128,
+        subtitleBottom:      414,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  192,
+        contentBottomHeight: 608,
+        contentBottomAlign:  'right',
+        noteBottom:          320,
+        noteHeight:          82,
+        noteWidth:           598,
     },
     '1920x1080': {
-        marginTop:      64,
-        contentTop:     64,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 173,
-        subtitleHeight: 80,
-        noteBottom:     64,
-        noteHeight:     80,
+        marginTop:           64,
+        contentTop:          192,
+        contentTopWidth:     300,
+        marginBottom:        64,
+        marginLeft:          64,
+        marginRight:         64,
+        subtitleBottom:      159,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 253,
+        contentBottomAlign:  'left',
+        noteBottom:          64,
+        noteHeight:          90,
+        noteWidth:           700,
     },
     '1080x1350': {
-        marginTop:      64,
-        contentTop:     192,
-        marginBottom:   64,
-        marginLeft:     64,
-        marginRight:    64,
-        subtitleBottom: 173,
-        subtitleHeight: 80,
-        noteBottom:     64,
-        noteHeight:     80,
+        marginTop:          64,
+        contentTop:         192,
+        contentTopWidth:    300,
+        marginBottom:       64,
+        marginLeft:         64,
+        marginRight:        64,
+        subtitleBottom:      159,
+        subtitleHeight:      94,
+        subtitleWidth:       690,
+        contentBottomWidth:  300,
+        contentBottomHeight: 253,
+        noteBottom:          64,
+        noteHeight:          82,
+        noteWidth:           598,
     },
 };
 
@@ -148,6 +181,89 @@ export interface VideoSegment {
 }
 
 // ============================================
+// Position Grid Types
+// ============================================
+
+export type GridPosition = 'TL' | 'TC' | 'TR' | 'ML' | 'MC' | 'MR' | 'BL' | 'BC' | 'BR';
+
+/** Ordered labels for rendering the 3×3 grid left-to-right, top-to-bottom. */
+export const GRID_ORDER: GridPosition[] = ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'];
+
+export const GRID_POSITION_LABELS: Record<GridPosition, string> = {
+    TL: 'Top Left', TC: 'Top Center', TR: 'Top Right',
+    ML: 'Middle Left', MC: 'Middle Center', MR: 'Middle Right',
+    BL: 'Bottom Left', BC: 'Bottom Center', BR: 'Bottom Right',
+};
+
+export interface GridPositionConfig {
+    x: number;                          // px from left edge of native frame
+    y: number;                          // px from top edge of native frame
+    anchor: 'top' | 'middle' | 'bottom'; // vertical alignment anchor
+}
+
+/**
+ * Pixel-exact grid positions per resolution, derived from SAFE_ZONES margins.
+ * x/y are in the native video coordinate space (e.g. 1080×1920).
+ */
+export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPositionConfig>> = {
+    '1080x1920': {
+        TL: { x: 128,  y: 160,  anchor: 'top'    },
+        TC: { x: 540,  y: 160,  anchor: 'top'    },
+        TR: { x: 952,  y: 160,  anchor: 'top'    },
+        ML: { x: 128,  y: 960,  anchor: 'middle' },
+        MC: { x: 540,  y: 960,  anchor: 'middle' },
+        MR: { x: 952,  y: 960,  anchor: 'middle' },
+        BL: { x: 128,  y: 1412, anchor: 'bottom' },
+        BC: { x: 540,  y: 1412, anchor: 'bottom' },
+        BR: { x: 888,  y: 1412, anchor: 'bottom' }, // right edge at 1080-192=888 to clear content-bottom block
+    },
+    '1920x1080': {
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block
+        TC: { x: 960,  y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
+        TR: { x: 1856, y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
+        ML: { x: 64,   y: 540,  anchor: 'middle' },
+        MC: { x: 960,  y: 540,  anchor: 'middle' },
+        MR: { x: 1856, y: 540,  anchor: 'middle' },
+        BL: { x: 64,   y: 827,  anchor: 'bottom' }, // above subtitle/content-bottom zone
+        BC: { x: 960,  y: 827,  anchor: 'bottom' },
+        BR: { x: 1856, y: 827,  anchor: 'bottom' },
+    },
+    '1080x1080': {
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top-left block
+        TC: { x: 540,  y: 192,  anchor: 'top'    }, // same top boundary as TL for visual consistency
+        TR: { x: 1016, y: 192,  anchor: 'top'    }, // same top boundary
+        ML: { x: 64,   y: 540,  anchor: 'middle' },
+        MC: { x: 540,  y: 540,  anchor: 'middle' },
+        MR: { x: 1016, y: 540,  anchor: 'middle' },
+        BL: { x: 64,   y: 858,  anchor: 'bottom' }, // above 300×222 content-bottom block & subtitle zone
+        BC: { x: 540,  y: 858,  anchor: 'bottom' },
+        BR: { x: 1016, y: 858,  anchor: 'bottom' },
+    },
+    '1080x1350': {
+        TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block
+        TC: { x: 540,  y: 192,  anchor: 'top'    },
+        TR: { x: 1016, y: 192,  anchor: 'top'    },
+        ML: { x: 64,   y: 675,  anchor: 'middle' }, // vertical center
+        MC: { x: 540,  y: 675,  anchor: 'middle' },
+        MR: { x: 1016, y: 675,  anchor: 'middle' },
+        BL: { x: 64,   y: 1097, anchor: 'bottom' }, // above subtitle/content-bottom zone
+        BC: { x: 540,  y: 1097, anchor: 'bottom' },
+        BR: { x: 1016, y: 1097, anchor: 'bottom' },
+    },
+};
+
+/**
+ * Which grid positions are available for each resolution.
+ * Blocked positions render as disabled (greyed-out) in the UI.
+ */
+export const POSITION_CONSTRAINTS: Record<VideoResolution, GridPosition[]> = {
+    '1080x1920': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1920x1080': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1080x1080': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+    '1080x1350': ['TL', 'TC', 'TR', 'ML', 'MC', 'MR', 'BL', 'BC', 'BR'],
+};
+
+// ============================================
 // Text Layer Types
 // ============================================
 
@@ -157,8 +273,9 @@ export interface TextLayer {
     id: string;
     segmentId: string;
     content: string;
-    positionX: number; // percentage 0-100
-    positionY: number; // percentage 0-100
+    positionX: number; // px in native video resolution
+    positionY: number; // px in native video resolution
+    positionAnchor?: 'top' | 'middle' | 'bottom'; // vertical alignment anchor
     fontFamily: string;
     fontSize: number;
     fontWeight?: number; // defaults to 800 (bold); use 400 for regular
@@ -173,8 +290,9 @@ export interface TextLayer {
 
 export const DEFAULT_TEXT_LAYER: Omit<TextLayer, 'id' | 'segmentId'> = {
     content: 'Enter text here',
-    positionX: 50,
-    positionY: 80,
+    positionX: 540,
+    positionY: 160,
+    positionAnchor: 'top',
     fontFamily: 'Inter',
     fontSize: 64,
     fontWeight: 800,

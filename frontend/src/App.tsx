@@ -43,7 +43,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/store/app-store";
-import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution } from "@/types";
+import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
 
@@ -1914,8 +1914,9 @@ function AnalyzeStepContent() {
 interface TextLayerOverlay {
     id: string;
     content: string;
-    positionX: number;
-    positionY: number;
+    positionX: number;                          // px in native video resolution
+    positionY: number;                          // px in native video resolution
+    positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
     fontWeight?: number; // defaults to 800 if not set
     color: string;
@@ -2094,7 +2095,7 @@ function AutoFitText({
     }, [computeFit]);
 
     return (
-        <div ref={containerRef} style={{ width: '100%' }}>
+        <div ref={containerRef} style={{ width: '100%', lineHeight: 0 }}>
             <div
                 className={cn('inline-block', animClass)}
                 style={{
@@ -2109,6 +2110,7 @@ function AutoFitText({
                     width: '100%',
                     textAlign: textAlign,
                     wordBreak: 'break-word' as const,
+                    verticalAlign: 'top',
                     ...(noClamp ? {
                         // Show all lines — no truncation
                         display: 'block',
@@ -2585,10 +2587,26 @@ function SceneVideoPlayer({
                         // In editor mode, only show layers when in their time range (no ghosting)
                         const isInTimeRange = relativeTime >= layer.startTime && relativeTime <= effectiveEndTime;
 
-                        // Determine text alignment based on horizontal position
-                        const textAlign: 'left' | 'center' | 'right' = layer.positionX <= 20 ? 'left' : layer.positionX >= 80 ? 'right' : 'center';
-                        // Determine vertical transform based on position
-                        const translateY = layer.positionY <= 20 ? '0%' : layer.positionY >= 80 ? '-100%' : '-50%';
+                        // Determine text alignment based on horizontal position (px thresholds)
+                        const vW = videoDims.width;
+                        const vH = videoDims.height;
+                        const textAlign: 'left' | 'center' | 'right' = layer.positionX <= vW * 0.20 ? 'left' : layer.positionX >= vW * 0.80 ? 'right' : 'center';
+                        // Vertical transform: use explicit anchor when set, else derive from position
+                        const translateY = layer.positionAnchor === 'top'    ? '0%'
+                                         : layer.positionAnchor === 'bottom' ? '-100%'
+                                         : layer.positionAnchor === 'middle' ? '-50%'
+                                         : layer.positionY <= vH * 0.30 ? '0%' : layer.positionY >= vH * 0.70 ? '-100%' : '-50%';
+                        // Convert native px → CSS % relative to the displayed video rect
+                        const topPct = (layer.positionY / vH) * 100;
+
+                        // Derive horizontal bounds from positionX so left-/right-aligned
+                        // text anchors to the grid x coordinate, not the fixed 12% safe margin.
+                        const xPct = (layer.positionX / vW) * 100;
+                        const horizStyle = textAlign === 'left'
+                            ? { left: `${xPct}%`,        right: '12%' }
+                            : textAlign === 'right'
+                            ? { left: '12%',              right: `${100 - xPct}%` }
+                            : { left: '12%',              right: '12%' }; // center: span safe area
 
                         return (
                             <div
@@ -2596,10 +2614,8 @@ function SceneVideoPlayer({
                                 className="pointer-events-none"
                                 style={{
                                     position: 'absolute',
-                                    // Horizontal: always span the safe area (12% to 88%), use text-align for positioning
-                                    left: '12%',
-                                    right: '12%',
-                                    top: `${layer.positionY}%`,
+                                    ...horizStyle,
+                                    top: `${topPct}%`,
                                     transform: `translateY(${translateY})`,
                                     zIndex: 20,
                                     userSelect: 'none',
@@ -2650,7 +2666,7 @@ function SceneVideoPlayer({
                                             content={layer.content}
                                             defaultColor={layer.color}
                                             maxFontSize={Math.max(12, Math.round(layer.fontSize * (previewShortSide / 1080)))}
-                                            lineHeight={1.3}
+                                            lineHeight={1}
                                             maxLines={2}
                                             backgroundColor={layer.backgroundColor}
                                             textAlign={textAlign}
@@ -2674,17 +2690,27 @@ function SceneVideoPlayer({
                     const z = SAFE_ZONES[resKey] ?? SAFE_ZONES['1080x1920'];
 
                     // Convert px values to % of canvas dimensions
-                    const pctTop    = (z.marginTop    / vh) * 100;
-                    const pctContentTop = (z.contentTop / vh) * 100;
-                    const pctBottom = (z.marginBottom / vh) * 100;
-                    const pctLeft   = (z.marginLeft   / vw) * 100;
-                    const pctRight  = (z.marginRight  / vw) * 100;
+                    const pctTop        = (z.marginTop    / vh) * 100;
+                    const pctContentTop = (z.contentTop   / vh) * 100;
+                    const pctBottom     = (z.marginBottom / vh) * 100;
+                    const pctLeft       = (z.marginLeft   / vw) * 100;
+                    const pctRight      = (z.marginRight  / vw) * 100;
 
                     const subtitleBottom = (z.subtitleBottom / vh) * 100;
                     const subtitleTop    = subtitleBottom + (z.subtitleHeight / vh) * 100;
+                    const subtitleLeft   = z.subtitleWidth ? (((vw - z.subtitleWidth) / 2) / vw) * 100 : pctLeft;
+                    const subtitleRight  = z.subtitleWidth ? (((vw - z.subtitleWidth) / 2) / vw) * 100 : pctRight;
 
                     const noteBottom = (z.noteBottom / vh) * 100;
                     const noteTop    = noteBottom + (z.noteHeight / vh) * 100;
+                    const noteLeft   = z.noteWidth ? (((vw - z.noteWidth) / 2) / vw) * 100 : pctLeft;
+                    const noteRight  = z.noteWidth ? (((vw - z.noteWidth) / 2) / vw) * 100 : pctRight;
+
+                    // Optional content-top / content-bottom rectangles
+                    const contentTopRectW      = z.contentTopWidth    ? (z.contentTopWidth    / vw) * 100 : null;
+                    const contentBottomRectW   = z.contentBottomWidth ? (z.contentBottomWidth / vw) * 100 : null;
+                    const contentBottomH       = ((z.contentBottomHeight ?? z.subtitleBottom) / vh) * 100;
+                    const contentBottomIsRight = z.contentBottomAlign === 'right';
 
                     return (
                         <div
@@ -2706,14 +2732,35 @@ function SceneVideoPlayer({
                             />
                             {/* 🔴 Action safe label */}
                             <div
-                                className="absolute text-[10px] font-mono text-red-400/80 px-1"
+                                className="absolute text-[6px] font-mono text-red-400/80 px-1"
                                 style={{ top: `${pctTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
                             >
                                 Safe ({z.marginTop}px top / {z.marginLeft}px sides)
                             </div>
 
-                            {/* 🟠 Top content margin — band between marginTop and contentTop */}
-                            {z.contentTop > z.marginTop && (
+                            {/* 🟠 Content top zone — rect (0,0)→(contentTopWidth, contentTop) or band between marginTop and contentTop */}
+                            {contentTopRectW !== null ? (
+                                <>
+                                    <div
+                                        className="absolute"
+                                        style={{
+                                            top: 0,
+                                            left: 0,
+                                            width: `${contentTopRectW}%`,
+                                            height: `${pctContentTop}%`,
+                                            background: 'rgba(251,146,60,0.20)',
+                                            borderRight: '1.5px dashed rgba(251,146,60,0.9)',
+                                            borderBottom: '1.5px dashed rgba(251,146,60,0.9)',
+                                        }}
+                                    />
+                                    <div
+                                        className="absolute text-[6px] font-mono text-orange-400/90 px-1"
+                                        style={{ top: `${pctContentTop + 0.5}%`, left: '0.5%' }}
+                                    >
+                                        Content top ({z.contentTopWidth}×{z.contentTop}px)
+                                    </div>
+                                </>
+                            ) : z.contentTop > z.marginTop && (
                                 <>
                                     <div
                                         className="absolute"
@@ -2729,7 +2776,7 @@ function SceneVideoPlayer({
                                         }}
                                     />
                                     <div
-                                        className="absolute text-[10px] font-mono text-orange-400/90 px-1"
+                                        className="absolute text-[6px] font-mono text-orange-400/90 px-1"
                                         style={{ top: `${pctContentTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
                                     >
                                         Content ({z.contentTop}px from top)
@@ -2737,42 +2784,71 @@ function SceneVideoPlayer({
                                 </>
                             )}
 
-                            {/* 🟦 Subtitle zone band */}
+                            {/* 🟦 Subtitle zone band — centered when subtitleWidth is set */}
                             <div
                                 className="absolute"
                                 style={{
                                     top: `${100 - subtitleTop}%`,
-                                    left: `${pctLeft}%`,
-                                    right: `${pctRight}%`,
+                                    left: `${subtitleLeft}%`,
+                                    right: `${subtitleRight}%`,
                                     bottom: `${subtitleBottom}%`,
                                     background: 'rgba(20,184,166,0.18)',
                                     border: '1px solid rgba(20,184,166,0.6)',
                                 }}
                             />
                             <div
-                                className="absolute text-[10px] font-mono text-teal-400/90 px-1"
-                                style={{ bottom: `${subtitleTop + 0.5}%`, left: `${pctLeft + 0.5}%` }}
+                                className="absolute text-[6px] font-mono text-teal-400/90 px-1"
+                                style={{ bottom: `${subtitleTop + 0.5}%`, left: `${subtitleLeft + 0.5}%` }}
                             >
-                                Subtitle ({z.subtitleBottom + z.subtitleHeight}px from bottom)
+                                Subtitle · {z.subtitleWidth ?? ''}×{z.subtitleHeight}px · {z.subtitleBottom + z.subtitleHeight}px from bottom
                             </div>
 
-                            {/* 🟨 Note / disclaimer zone band */}
+                            {/* 🟩 Content bottom rectangle — anchored bottom-left or bottom-right */}
+                            {contentBottomRectW !== null && (
+                                <>
+                                    <div
+                                        className="absolute"
+                                        style={{
+                                            bottom: 0,
+                                            ...(contentBottomIsRight
+                                                ? { right: 0, borderLeft: '1.5px dashed rgba(34,197,94,0.8)' }
+                                                : { left:  0, borderRight: '1.5px dashed rgba(34,197,94,0.8)' }
+                                            ),
+                                            width: `${contentBottomRectW}%`,
+                                            height: `${contentBottomH}%`,
+                                            background: 'rgba(34,197,94,0.15)',
+                                            borderTop: '1.5px dashed rgba(34,197,94,0.8)',
+                                        }}
+                                    />
+                                    <div
+                                        className="absolute text-[6px] font-mono text-green-400/90 px-1"
+                                        style={{
+                                            bottom: `${contentBottomH + 0.3}%`,
+                                            ...(contentBottomIsRight ? { right: '0.5%' } : { left: '0.5%' }),
+                                        }}
+                                    >
+                                        Content bottom<br />{z.contentBottomWidth}×{z.contentBottomHeight ?? z.subtitleBottom}px
+                                    </div>
+                                </>
+                            )}
+
+                            {/* 🟨 Note / disclaimer zone band — centered when noteWidth is set */}
                             <div
                                 className="absolute"
                                 style={{
                                     top: `${100 - noteTop}%`,
-                                    left: `${pctLeft}%`,
-                                    right: `${pctRight}%`,
+                                    left: `${noteLeft}%`,
+                                    right: `${noteRight}%`,
                                     bottom: `${noteBottom}%`,
                                     background: 'rgba(234,179,8,0.18)',
                                     border: '1px solid rgba(234,179,8,0.6)',
                                 }}
                             />
                             <div
-                                className="absolute text-[10px] font-mono text-yellow-400/90 px-1"
-                                style={{ bottom: `${noteBottom + 0.3}%`, left: `${pctLeft + 0.5}%` }}
+                                className="absolute text-[6px] font-mono text-yellow-400/90 px-1"
+                                style={{ bottom: `${noteTop + 0.3}%`, left: `${noteLeft + 0.5}%` }}
                             >
-                                Note ({z.noteBottom}px from bottom)
+                                Note · {z.noteWidth ?? ''}×{z.noteHeight}px · {z.noteBottom}px from bottom
                             </div>
 
                         </div>
@@ -2939,7 +3015,14 @@ function EditTextStepContent() {
             // For other scenes: skip if no textOnScreen
             if (!isOutro && !entry.textOnScreen) return seg;
 
-            const positionY = isOutro ? 49.22 : 7;
+            const vH = video?.height ?? 1920;
+            const vW = video?.width ?? 1080;
+            const resKey = `${vW}x${vH}` as VideoResolution;
+            const tcPos = (POSITION_GRID[resKey] ?? POSITION_GRID['1080x1920']).TC;
+            // Outro positions: CTA centered at ~49% of frame height, disclaimer at ~77%
+            const outroCta  = { x: Math.round(vW / 2), y: Math.round(vH * 0.4922), anchor: 'middle' as const };
+            const outroDisc = { x: Math.round(vW / 2), y: Math.round(vH * 0.7667), anchor: 'middle' as const };
+            const mainPos = isOutro ? outroCta : tcPos;
             const fontSize = isOutro ? outroConfig.ctaFontSize : 64;
             const startTime = isOutro ? 2 : 0;
 
@@ -2955,8 +3038,9 @@ function EditTextStepContent() {
                     id: `text-script-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                     segmentId: seg.id,
                     content: ctaContent,
-                    positionX: 50,
-                    positionY,
+                    positionX: mainPos.x,
+                    positionY: mainPos.y,
+                    positionAnchor: mainPos.anchor,
                     fontFamily: "Inter",
                     fontSize,
                     color: isOutro ? "#181C25" : suggestedTextColor,
@@ -2974,10 +3058,11 @@ function EditTextStepContent() {
                     segmentId: seg.id,
                     // Strip any color markup from disclaimer too
                     content: stripDisclaimerPrefix(entry.disclaimer || '').replace(/\{(?:red|white|dark|#[0-9a-fA-F]{6}):([^}]+)\}/g, '$1'),
-                    positionX: 50,
-                    positionY: 76.67, // 1472px from top on 1080×1920
+                    positionX: outroDisc.x,
+                    positionY: outroDisc.y,
+                    positionAnchor: outroDisc.anchor,
                     fontFamily: "Inter",
-                    fontSize: 24, // 24 * 0.5 preview scale = 12px rendered
+                    fontSize: 24,
                     fontWeight: 400, // Inter Regular
                     color: "#181C25",
                     animationType: "fade",
@@ -2996,12 +3081,15 @@ function EditTextStepContent() {
     const handleAddText = () => {
         if (segments[activeSegment]) {
             const newLayerId = `text-${Date.now()}`;
+            const resKey = (video ? `${video.width}x${video.height}` : '1080x1920') as VideoResolution;
+            const defaultPos = (POSITION_GRID[resKey] ?? POSITION_GRID['1080x1920']).TC;
             addTextLayer(segments[activeSegment].id, {
                 id: newLayerId,
                 segmentId: segments[activeSegment].id,
                 content: "Your text here",
-                positionX: 50,
-                positionY: 7,
+                positionX: defaultPos.x,
+                positionY: defaultPos.y,
+                positionAnchor: defaultPos.anchor,
                 fontFamily: "Inter",
                 fontSize: 64,
                 color: suggestedTextColor,
@@ -3039,8 +3127,13 @@ function EditTextStepContent() {
             // For other scenes: skip if no textOnScreen
             if (!isOutro && !entry.textOnScreen) return seg;
 
-            // Outro CTA: 945px from TOP on 1080×1920 = 49.22% from top, 40px font, starts at 2s
-            const positionY = isOutro ? 49.22 : 7;
+            const vH2 = video?.height ?? 1920;
+            const vW2 = video?.width ?? 1080;
+            const resKey2 = `${vW2}x${vH2}` as VideoResolution;
+            const tcPos2 = (POSITION_GRID[resKey2] ?? POSITION_GRID['1080x1920']).TC;
+            const outroCta2  = { x: Math.round(vW2 / 2), y: Math.round(vH2 * 0.4922), anchor: 'middle' as const };
+            const outroDisc2 = { x: Math.round(vW2 / 2), y: Math.round(vH2 * 0.7667), anchor: 'middle' as const };
+            const mainPos2 = isOutro ? outroCta2 : tcPos2;
             const fontSize = isOutro ? 40 : 64;
             const startTime = isOutro ? 2 : 0;
 
@@ -3053,8 +3146,9 @@ function EditTextStepContent() {
                 id: `text-script-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 segmentId: seg.id,
                 content: ctaContent,
-                positionX: 50,
-                positionY,
+                positionX: mainPos2.x,
+                positionY: mainPos2.y,
+                positionAnchor: mainPos2.anchor,
                 fontFamily: "Inter",
                 fontSize,
                 color: isOutro ? "#181C25" : suggestedTextColor,
@@ -3070,10 +3164,11 @@ function EditTextStepContent() {
                 segmentId: seg.id,
                 // Strip any color markup from disclaimer too
                 content: stripDisclaimerPrefix(entry.disclaimer || '').replace(/\{(?:red|white|dark|#[0-9a-fA-F]{6}):([^}]+)\}/g, '$1'),
-                positionX: 50,
-                positionY: 76.67, // 1472px from top on 1080×1920
+                positionX: outroDisc2.x,
+                positionY: outroDisc2.y,
+                positionAnchor: outroDisc2.anchor,
                 fontFamily: "Inter",
-                fontSize: 24, // 24 * 0.5 preview scale = 12px rendered
+                fontSize: 24,
                 fontWeight: 400, // Inter Regular
                 color: "#181C25",
                 animationType: "fade" as const,
@@ -3112,6 +3207,7 @@ function EditTextStepContent() {
         content: layer.content,
         positionX: layer.positionX,
         positionY: layer.positionY,
+        positionAnchor: layer.positionAnchor,
         fontSize: layer.fontSize,
         fontWeight: layer.fontWeight ?? 800,
         color: layer.color,
@@ -3494,40 +3590,39 @@ function EditTextStepContent() {
                                     </label>
                                 </div>
 
-                                {/* Position Grid - 3x3 preset positions within safe area */}
+                                {/* Position Grid - 3x3 preset positions, pixel-exact per resolution */}
                                 <div className="space-y-2">
                                     <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Position</label>
                                     <div className="grid grid-cols-3 gap-1 w-fit">
-                                        {/* Safe area: 128px from edges on 1080x1920 = ~12% horizontal, ~7% vertical */}
-                                        {[
-                                            { x: 12, y: 7, label: 'TL' },   // Top Left
-                                            { x: 50, y: 7, label: 'TC' },   // Top Center
-                                            { x: 88, y: 7, label: 'TR' },   // Top Right
-                                            { x: 12, y: 50, label: 'ML' },  // Middle Left
-                                            { x: 50, y: 50, label: 'MC' },  // Middle Center
-                                            { x: 88, y: 50, label: 'MR' },  // Middle Right
-                                            { x: 12, y: 93, label: 'BL' },  // Bottom Left
-                                            { x: 50, y: 93, label: 'BC' },  // Bottom Center
-                                            { x: 88, y: 93, label: 'BR' },  // Bottom Right
-                                        ].map((pos) => {
-                                            const isSelected = Math.abs(layer.positionX - pos.x) < 5 && Math.abs(layer.positionY - pos.y) < 5;
-                                            return (
-                                                <button
-                                                    key={pos.label}
-                                                    type="button"
-                                                    onClick={() => updateTextLayer(currentSegment!.id, layer.id, { positionX: pos.x, positionY: pos.y })}
-                                                    className={cn(
-                                                        "w-8 h-8 rounded border text-[10px] font-medium transition-all",
-                                                        isSelected
-                                                            ? "bg-primary text-white border-primary"
-                                                            : "bg-background border-border hover:border-primary hover:bg-primary/10"
-                                                    )}
-                                                    title={`${pos.label === 'TL' ? 'Top Left' : pos.label === 'TC' ? 'Top Center' : pos.label === 'TR' ? 'Top Right' : pos.label === 'ML' ? 'Middle Left' : pos.label === 'MC' ? 'Middle Center' : pos.label === 'MR' ? 'Middle Right' : pos.label === 'BL' ? 'Bottom Left' : pos.label === 'BC' ? 'Bottom Center' : 'Bottom Right'}`}
-                                                >
-                                                    {pos.label}
-                                                </button>
-                                            );
-                                        })}
+                                        {(() => {
+                                            const resKey = video ? `${video.width}x${video.height}` as VideoResolution : '1080x1920';
+                                            const posGrid = POSITION_GRID[resKey] ?? POSITION_GRID['1080x1920'];
+                                            const allowedPos = POSITION_CONSTRAINTS[resKey] ?? GRID_ORDER;
+                                            return GRID_ORDER.map((label) => {
+                                                const pos = posGrid[label];
+                                                const isSelected = Math.abs(layer.positionX - pos.x) < 20 && Math.abs(layer.positionY - pos.y) < 20;
+                                                const isAllowed = (allowedPos as GridPosition[]).includes(label);
+                                                return (
+                                                    <button
+                                                        key={label}
+                                                        type="button"
+                                                        disabled={!isAllowed}
+                                                        onClick={() => isAllowed && updateTextLayer(currentSegment!.id, layer.id, { positionX: pos.x, positionY: pos.y, positionAnchor: pos.anchor })}
+                                                        className={cn(
+                                                            "w-8 h-8 rounded border text-[10px] font-medium transition-all",
+                                                            isSelected
+                                                                ? "bg-primary text-white border-primary"
+                                                                : isAllowed
+                                                                    ? "bg-background border-border hover:border-primary hover:bg-primary/10"
+                                                                    : "bg-muted/30 border-border/30 text-muted-foreground/30 cursor-not-allowed"
+                                                        )}
+                                                        title={`${GRID_POSITION_LABELS[label]}${!isAllowed ? ' — not available for this resolution' : ''}`}
+                                                    >
+                                                        {label}
+                                                    </button>
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                 </div>
 
@@ -3842,6 +3937,7 @@ function TranslateStepContent() {
             content: tr?.translatedContent ?? layer.content,
             positionX: layer.positionX,
             positionY: layer.positionY,
+            positionAnchor: layer.positionAnchor,
             fontSize: layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             color: layer.color,
@@ -4440,6 +4536,7 @@ function DubPreviewPlayer({
             content: tr?.translatedContent ?? layer.content,
             positionX: layer.positionX,
             positionY: layer.positionY,
+            positionAnchor: layer.positionAnchor,
             fontSize: layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             color: layer.color,
@@ -5150,13 +5247,16 @@ function OutroStepContent() {
 
     // Build live preview text layers from current outroConfig values
     const outroSeg = segments.find(s => s.isOutro) ?? (segments.length > 0 ? segments[segments.length - 1] : null);
+    const _outroVH = video?.height ?? 1920;
+    const _outroVW = video?.width ?? 1080;
     const previewLayers: TextLayerOverlay[] = [];
     if (outroConfig.ctaText.trim()) {
         previewLayers.push({
             id: 'preview-cta',
             content: outroConfig.ctaText,
-            positionX: 50,
-            positionY: 49.22,
+            positionX: Math.round(_outroVW / 2),
+            positionY: Math.round(_outroVH * 0.4922),
+            positionAnchor: 'middle',
             fontSize: outroConfig.ctaFontSize,
             color: '#181C25',
             backgroundColor: undefined,
@@ -5169,8 +5269,9 @@ function OutroStepContent() {
         previewLayers.push({
             id: 'preview-disclaimer',
             content: outroConfig.disclaimerText,
-            positionX: 50,
-            positionY: 76.67,
+            positionX: Math.round(_outroVW / 2),
+            positionY: Math.round(_outroVH * 0.7667),
+            positionAnchor: 'middle',
             fontSize: 24,
             fontWeight: 400,
             color: '#181C25',
@@ -5249,13 +5350,16 @@ function OutroStepContent() {
             // double-rendering when both English and translated layers would otherwise stack.
             const newLayers: TextLayer[] = [];
 
+            const _saveVH = video?.height ?? 1920;
+            const _saveVW = video?.width ?? 1080;
             if (hasCta) {
                 newLayers.push({
                     id: `text-outro-cta-${Date.now()}`,
                     segmentId: outroSegment.id,
                     content: outroConfig.ctaText,
-                    positionX: 50,
-                    positionY: 49.22, // 945px from top on 1080×1920
+                    positionX: Math.round(_saveVW / 2),
+                    positionY: Math.round(_saveVH * 0.4922),
+                    positionAnchor: 'middle' as const,
                     fontFamily: "Inter",
                     fontSize: outroConfig.ctaFontSize,
                     fontWeight: 800,
@@ -5272,8 +5376,9 @@ function OutroStepContent() {
                     id: `text-outro-disclaimer-${Date.now()}`,
                     segmentId: outroSegment.id,
                     content: outroConfig.disclaimerText,
-                    positionX: 50,
-                    positionY: 76.67, // 1472px from top on 1080×1920
+                    positionX: Math.round(_saveVW / 2),
+                    positionY: Math.round(_saveVH * 0.7667),
+                    positionAnchor: 'middle' as const,
                     fontFamily: "Inter",
                     fontSize: 24,
                     fontWeight: 400,
@@ -5496,6 +5601,7 @@ function ExportStepContent() {
                             content,
                             positionX: layer.positionX,
                             positionY: layer.positionY,
+                            positionAnchor: layer.positionAnchor ?? 'middle',
                             fontSize: layer.fontSize,
                             fontWeight: layer.fontWeight ?? 800,
                             color: layer.color,

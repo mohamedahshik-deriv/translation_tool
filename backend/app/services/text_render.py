@@ -305,8 +305,9 @@ def _wrap_text(
 @dataclass
 class TextLayerConfig:
     content: str
-    position_x: float        # percentage 0–100
-    position_y: float        # percentage 0–100
+    position_x: float        # px in native video resolution
+    position_y: float        # px in native video resolution
+    position_anchor: str     # 'top' | 'middle' | 'bottom'
     font_size: int
     font_weight: int          # 400 = normal, 800 = bold
     color: str                # CSS hex e.g. "#ffffff"
@@ -376,10 +377,11 @@ def render_text_layer_to_png(
         line_h  = int(best_size * 1.3)
         total_h = len(lines) * line_h
 
-        pos_y_px = (layer.position_y / 100) * video_height
-        if layer.position_y <= 20:
+        pos_y_px = layer.position_y
+        anchor = (layer.position_anchor or 'middle').lower()
+        if anchor == 'top':
             start_y = int(pos_y_px)
-        elif layer.position_y >= 80:
+        elif anchor == 'bottom':
             start_y = int(pos_y_px - total_h)
         else:
             start_y = int(pos_y_px - total_h / 2)
@@ -449,10 +451,11 @@ def render_text_layer_to_png(
     line_h  = int(best_size * 1.3)
     total_h = len(lines) * line_h
 
-    pos_y_px = (layer.position_y / 100) * video_height
-    if layer.position_y <= 20:
+    pos_y_px = layer.position_y
+    anchor = (layer.position_anchor or 'middle').lower()
+    if anchor == 'top':
         start_y = pos_y_px
-    elif layer.position_y >= 80:
+    elif anchor == 'bottom':
         start_y = pos_y_px - total_h
     else:
         start_y = pos_y_px - total_h / 2
