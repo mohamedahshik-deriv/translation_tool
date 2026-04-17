@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import shutil
 import tempfile
 import uuid
@@ -37,6 +38,7 @@ limiter = Limiter(key_func=get_remote_address)
 # Per-scene and concat FFmpeg timeout (seconds)
 SCENE_TIMEOUT = 600
 CONCAT_TIMEOUT = 300
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
 # ── Config dataclasses ────────────────────────────────────────────────────────
@@ -55,6 +57,8 @@ class TextLayerCfg:
     stayTillEnd: bool
     startTime: float
     endTime: float
+    maxLines: int = 2          # 0 = unlimited (disclaimer)
+    overlayFileKey: Optional[str] = None
 
 
 @dataclass
@@ -100,6 +104,8 @@ def _parse_config(raw: str) -> ExportCfg:
                     stayTillEnd=tl.get("stayTillEnd", False),
                     startTime=tl["startTime"],
                     endTime=tl["endTime"],
+                    maxLines=tl.get("maxLines", 2),
+                    overlayFileKey=tl.get("overlayFileKey"),
                 )
                 for tl in s.get("textLayers", [])
             ],
@@ -149,6 +155,7 @@ async def _process_scene(
     output_path: str,
     fps: float,
     work_dir: Path,
+    overlay_paths_by_key: dict[str, str],
 ) -> None:
     scene_dur = scene.endTime - scene.startTime
     rate = max(0.5, min(2.0, scene.playbackRate))
@@ -163,6 +170,9 @@ async def _process_scene(
     # Render each text layer as a transparent PNG (CPU-bound but fast)
     png_layers: list[tuple[str, TextLayerCfg]] = []
     for li, tl in enumerate(scene.textLayers):
+        if tl.overlayFileKey and tl.overlayFileKey in overlay_paths_by_key:
+            png_layers.append((overlay_paths_by_key[tl.overlayFileKey], tl))
+            continue
         from app.services.text_render import strip_rich_markup
         plain = strip_rich_markup(tl.content or "").strip()
         if not plain:
@@ -179,6 +189,7 @@ async def _process_scene(
                 background_color=tl.backgroundColor,
                 start_time=tl.startTime,
                 end_time=tl.endTime,
+                max_lines=tl.maxLines,
             )
             png_bytes = render_text_layer_to_png(cfg, video_width, video_height)
             png_path = str(work_dir / f"txt_{scene.index}_{li}.png")
@@ -356,6 +367,8 @@ async def export_video(
         # Collect per-scene audio blobs from the multipart form
         form = await request.form()
         audio_paths: dict[int, str] = {}
+        overlay_paths_by_key: dict[str, str] = {}
+        overlay_key_re = re.compile(r"^overlay_\d+_\d+$")
         for i in range(len(cfg.scenes)):
             key = f"audio_{i}"
             audio_file = form.get(key)
@@ -364,6 +377,34 @@ async def export_video(
                 p = str(work_dir / f"audio_{i}.mp3")
                 Path(p).write_bytes(audio_bytes)
                 audio_paths[i] = p
+        for key, value in form.items():
+            if not overlay_key_re.match(str(key)):
+                continue
+            if not hasattr(value, "read"):
+                continue
+            overlay_bytes = await value.read()  # type: ignore[union-attr]
+            if len(overlay_bytes) > 8 * 1024 * 1024:
+                raise HTTPException(status_code=400, detail=f"Overlay file too large: {key}")
+            if not overlay_bytes.startswith(PNG_MAGIC):
+                raise HTTPException(status_code=400, detail=f"Overlay file is not PNG: {key}")
+            overlay_path = str(work_dir / f"{key}.png")
+            Path(overlay_path).write_bytes(overlay_bytes)
+            overlay_paths_by_key[str(key)] = overlay_path
+
+        expected_overlay_keys = {
+            tl.overlayFileKey
+            for scene in cfg.scenes
+            for tl in scene.textLayers
+            if tl.overlayFileKey
+        }
+        missing_keys = sorted(k for k in expected_overlay_keys if k not in overlay_paths_by_key)
+        if missing_keys:
+            missing_preview = ", ".join(missing_keys[:5])
+            extra = f" (+{len(missing_keys) - 5} more)" if len(missing_keys) > 5 else ""
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing overlay files for export: {missing_preview}{extra}",
+            )
 
         scene_paths: list[str] = []
         for i, scene in enumerate(cfg.scenes):
@@ -378,6 +419,7 @@ async def export_video(
                 output_path=scene_out,
                 fps=cfg.fps,
                 work_dir=work_dir,
+                overlay_paths_by_key=overlay_paths_by_key,
             )
             scene_paths.append(scene_out)
             print(f"[export-video] scene {i + 1}/{len(cfg.scenes)} done")
