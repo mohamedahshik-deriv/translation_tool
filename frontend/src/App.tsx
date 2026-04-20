@@ -1045,6 +1045,7 @@ function AnalyzeStepContent() {
     const videoPreviewRef = useRef<HTMLVideoElement>(null);
     const wasPlayingBeforeScrub = useRef(false);
     const removedCutRef = useRef<number | null>(null);
+    const analysisStartedRef = useRef(false);
 
     const duration = video?.duration ?? 0;
     const FPS = video?.frameRate ?? 30;
@@ -1459,16 +1460,17 @@ function AnalyzeStepContent() {
             alert(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         } finally {
             setIsAnalyzing(false);
+            analysisStartedRef.current = false;
         }
     };
 
     // Auto-trigger analysis when navigating from Upload step with Continue button
     useEffect(() => {
-        if (shouldAutoAnalyze && video && !isAnalyzing) {
-            setShouldAutoAnalyze(false); // Reset flag so it doesn't re-trigger
+        if (shouldAutoAnalyze && video && !isAnalyzing && !analysisStartedRef.current) {
+            analysisStartedRef.current = true;
+            setShouldAutoAnalyze(false);
             startAnalysis();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shouldAutoAnalyze, video]);
 
     const allScenes = cutPoints.length > 0
