@@ -39,3 +39,7 @@ yarn-error.log*
 
 #Notebooks
 notebooks/
+
+__pycache__/
+*.pyc
+*.pyo
