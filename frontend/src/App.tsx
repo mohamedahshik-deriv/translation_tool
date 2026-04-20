@@ -4378,8 +4378,9 @@ function TranslateStepContent() {
     const isApplyingHighlights = Object.values(highlightStatus).some(s => s === 'running');
     const highlightDone = new Set(Object.entries(highlightStatus).filter(([, s]) => s === 'done').map(([k]) => k));
 
-    // Collect all text layers across all segments
-    const allLayers = segments.flatMap(seg => seg.textLayers.map(l => ({ ...l, segmentId: seg.id })));
+    // Collect all text layers across all segments, excluding the outro which has its own
+    // dedicated translation flow via outroConfig.translations in OutroStepContent.
+    const allLayers = segments.filter(seg => !seg.isOutro).flatMap(seg => seg.textLayers.map(l => ({ ...l, segmentId: seg.id })));
 
     // Run Gemini markup + \u00A0 processing for a single language.
     // Safe to call concurrently for multiple languages — no shared lock.
