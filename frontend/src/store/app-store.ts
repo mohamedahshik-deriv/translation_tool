@@ -103,6 +103,10 @@ interface AppState {
     suggestedTextColor: string;
     setSuggestedTextColor: (color: string) => void;
 
+    // Suggested text colour derived from the outro segment's luminance (last ~15 s of video)
+    suggestedOutroTextColor: string;
+    setSuggestedOutroTextColor: (color: string) => void;
+
     /** Spoken language from analyze-scenes task 2 (ISO 639-1 + display name); null if unknown */
     detectedVoiceoverLanguage: { code: string; name: string } | null;
     setDetectedVoiceoverLanguage: (value: { code: string; name: string } | null) => void;
@@ -147,6 +151,7 @@ const initialState = {
     exportJobs: [],
     videoHasAudio: null,
     suggestedTextColor: '#ffffff',
+    suggestedOutroTextColor: '#181C25',
     detectedVoiceoverLanguage: null as { code: string; name: string } | null,
     isAnalyzing: false,
     isTranslating: false,
@@ -309,6 +314,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     setVideoHasAudio: (value) => set({ videoHasAudio: value }),
 
     setSuggestedTextColor: (color) => set({ suggestedTextColor: color }),
+
+    setSuggestedOutroTextColor: (color) => set({ suggestedOutroTextColor: color }),
 
     setDetectedVoiceoverLanguage: (value) => set({ detectedVoiceoverLanguage: value }),
 
