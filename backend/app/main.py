@@ -35,7 +35,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
-    expose_headers=["X-Has-Audio", "Content-Disposition", "X-Video-Width", "X-Video-Height", "X-Suggested-Text-Color"],
+    expose_headers=["X-Has-Audio", "Content-Disposition", "X-Video-Width", "X-Video-Height", "X-Suggested-Text-Color", "X-Suggested-Outro-Text-Color"],
 )
 
 # ── API Router (/api prefix mirrors the Next.js route convention) ─────────────

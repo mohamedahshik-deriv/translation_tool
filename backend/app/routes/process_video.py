@@ -18,7 +18,7 @@ import ffmpeg
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from app.services.luminence_detector import get_suggested_text_color
+from app.services.luminence_detector import get_suggested_text_color, get_suggested_outro_text_color
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -117,6 +117,17 @@ async def process_video(video: UploadFile = File(...)) -> Response:
 
         suggested_text_color = get_suggested_text_color(str(input_path))
 
+        # Sample luminance on the last 5 s of the video as a proxy for the outro.
+        # Uses seek_point + setpts=PTS-STARTPTS + trim in the lavfi movie filter
+        # so that the trim correctly limits to 5 seconds after PTS reset.
+        OUTRO_WINDOW = 5.0
+        if duration > OUTRO_WINDOW:
+            suggested_outro_text_color = get_suggested_outro_text_color(
+                str(input_path), duration=duration, window_seconds=OUTRO_WINDOW
+            )
+        else:
+            suggested_outro_text_color = suggested_text_color
+
         boundary = f"boundary-{uid}"
         body = _build_multipart(silent_bytes, audio_bytes, boundary)
 
@@ -128,6 +139,7 @@ async def process_video(video: UploadFile = File(...)) -> Response:
                 "X-Video-Width": str(video_width),
                 "X-Video-Height": str(video_height),
                 "X-Suggested-Text-Color": suggested_text_color,
+                "X-Suggested-Outro-Text-Color": suggested_outro_text_color,
             },
         )
 

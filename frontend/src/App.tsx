@@ -1036,7 +1036,7 @@ function SceneTimeline({
 }
 
 function AnalyzeStepContent() {
-    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -1045,6 +1045,7 @@ function AnalyzeStepContent() {
     const videoPreviewRef = useRef<HTMLVideoElement>(null);
     const wasPlayingBeforeScrub = useRef(false);
     const removedCutRef = useRef<number | null>(null);
+    const analysisStartedRef = useRef(false);
 
     const duration = video?.duration ?? 0;
     const FPS = video?.frameRate ?? 30;
@@ -1254,7 +1255,9 @@ function AnalyzeStepContent() {
             setVideoHasAudio(videoHasAudio);
             const suggestedColor = processResp.headers.get('X-Suggested-Text-Color');
             if (suggestedColor) setSuggestedTextColor(suggestedColor);
-            console.log(`[process-video] videoHasAudio: ${videoHasAudio}, suggestedTextColor: ${suggestedColor ?? 'not set'}`);
+            const suggestedOutroColor = processResp.headers.get('X-Suggested-Outro-Text-Color');
+            if (suggestedOutroColor) setSuggestedOutroTextColor(suggestedOutroColor);
+            console.log(`[process-video] videoHasAudio: ${videoHasAudio}, suggestedTextColor: ${suggestedColor ?? 'not set'}, suggestedOutroTextColor: ${suggestedOutroColor ?? 'not set'}`);
             // Parse multipart response to get silent video + audio blobs
             const processedFormData = await processResp.formData();
             const silentBlob = processedFormData.get('silent') as File | null;
@@ -1457,16 +1460,17 @@ function AnalyzeStepContent() {
             alert(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         } finally {
             setIsAnalyzing(false);
+            analysisStartedRef.current = false;
         }
     };
 
     // Auto-trigger analysis when navigating from Upload step with Continue button
     useEffect(() => {
-        if (shouldAutoAnalyze && video && !isAnalyzing) {
-            setShouldAutoAnalyze(false); // Reset flag so it doesn't re-trigger
+        if (shouldAutoAnalyze && video && !isAnalyzing && !analysisStartedRef.current) {
+            analysisStartedRef.current = true;
+            setShouldAutoAnalyze(false);
             startAnalysis();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shouldAutoAnalyze, video]);
 
     const allScenes = cutPoints.length > 0
@@ -3504,7 +3508,7 @@ function SceneVideoPlayer({
 let _scriptAutoPopulateLock = false;
 
 function EditTextStepContent() {
-    const { video, segments, setSegments, setCurrentStep, addTextLayer, removeTextLayer, updateTextLayer, scriptEntries, scriptAutoPopulated, setScriptAutoPopulated, outroConfig, suggestedTextColor } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, addTextLayer, removeTextLayer, updateTextLayer, scriptEntries, scriptAutoPopulated, setScriptAutoPopulated, outroConfig, suggestedTextColor, suggestedOutroTextColor } = useAppStore();
     const [activeSegment, setActiveSegment] = useState(0);
     const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
     const [showSafeArea, setShowSafeArea] = useState(false);
@@ -3580,7 +3584,7 @@ function EditTextStepContent() {
                     fontSize,
                     fontWeight: isOutro ? undefined : 800,
                     textStyle: isOutro ? undefined : 'headline',
-                    color: isOutro ? "#181C25" : suggestedTextColor,
+                    color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
                     animationType: "slide-up",
                     animationDuration: 0.5,
                     startTime,
@@ -3601,7 +3605,7 @@ function EditTextStepContent() {
                     fontFamily: "Inter",
                     fontSize: 24,
                     fontWeight: 400, // Inter Regular
-                    color: "#181C25",
+                    color: suggestedOutroTextColor,
                     animationType: "fade",
                     animationDuration: 0.5,
                     startTime: 2,
@@ -3692,7 +3696,7 @@ function EditTextStepContent() {
                 fontSize,
                 fontWeight: isOutro ? undefined : 800,
                 textStyle: isOutro ? undefined : 'headline' as const,
-                color: isOutro ? "#181C25" : suggestedTextColor,
+                color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
                 animationType: "slide-up" as const,
                 animationDuration: 0.5,
                 startTime,
@@ -3711,7 +3715,7 @@ function EditTextStepContent() {
                 fontFamily: "Inter",
                 fontSize: 24,
                 fontWeight: 400, // Inter Regular
-                color: "#181C25",
+                color: suggestedOutroTextColor,
                 animationType: "fade" as const,
                 animationDuration: 0.5,
                 startTime: 2,
@@ -5879,7 +5883,7 @@ function DubStepContent() {
 }
 
 function OutroStepContent() {
-    const { setCurrentStep, outroConfig, setOutroConfig, segments, setSegments, video, scriptEntries, selectedLanguages, detectedVoiceoverLanguage } = useAppStore();
+    const { setCurrentStep, outroConfig, setOutroConfig, segments, setSegments, video, scriptEntries, selectedLanguages, detectedVoiceoverLanguage, suggestedOutroTextColor } = useAppStore();
     const [ctaFontSize, setCtaFontSize] = useState<number>(64);
     const [resolvedDisclaimerFontSize, setResolvedDisclaimerFontSize] = useState<number>(24);
 
@@ -5922,7 +5926,7 @@ function OutroStepContent() {
             positionAnchor: 'middle',
             fontSize: ctaFontSize,
             fontWeight: 800,
-            color: '#181C25',
+            color: suggestedOutroTextColor,
             textShadow: '0 1px 6px rgba(255,255,255,0.8), 0 0 12px rgba(255,255,255,0.5)',
             animationType: 'slide-up',
             startTime: 2,
@@ -5939,7 +5943,7 @@ function OutroStepContent() {
             fontSize: 24,
             fontWeight: 400,
             textStyle: 'disclaimer',
-            color: '#181C25',
+            color: suggestedOutroTextColor,
             textShadow: '0 1px 4px rgba(255,255,255,0.8), 0 0 8px rgba(255,255,255,0.5)',
             animationType: 'fade',
             startTime: 2,
@@ -6028,7 +6032,7 @@ function OutroStepContent() {
                     fontFamily: "Inter",
                     fontSize: ctaFontSize,
                     fontWeight: 800,
-                    color: "#181C25",
+                    color: suggestedOutroTextColor,
                     animationType: "slide-up" as const,
                     animationDuration: 0.5,
                     startTime: 2,
@@ -6048,7 +6052,7 @@ function OutroStepContent() {
                     fontSize: resolvedDisclaimerFontSize,
                     fontWeight: 400,
                     textStyle: 'disclaimer' as const,
-                    color: "#181C25",
+                    color: suggestedOutroTextColor,
                     animationType: "fade" as const,
                     animationDuration: 0.5,
                     startTime: 2,
