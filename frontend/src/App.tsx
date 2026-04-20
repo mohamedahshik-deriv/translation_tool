@@ -1039,6 +1039,7 @@ function AnalyzeStepContent() {
     const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [detectedVoiceover, setDetectedVoiceover] = useState<boolean | null>(null); // null = not analyzed yet
     const [previewingScene, setPreviewingScene] = useState<number | null>(null);
     const videoPreviewRef = useRef<HTMLVideoElement>(null);
@@ -1511,6 +1512,8 @@ function AnalyzeStepContent() {
                                             setCurrentTime(videoPreviewRef.current.currentTime);
                                         }
                                     }}
+                                    onPlay={() => setIsVideoPlaying(true)}
+                                    onPause={() => setIsVideoPlaying(false)}
                                     playsInline
                                 />
                                 {/* Current time overlay */}
@@ -1526,7 +1529,10 @@ function AnalyzeStepContent() {
                                     className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/20"
                                 >
                                     <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
-                                        <Play className="w-6 h-6 text-gray-900 ml-0.5" />
+                                        {isVideoPlaying
+                                            ? <Pause className="w-6 h-6 text-gray-900" />
+                                            : <Play className="w-6 h-6 text-gray-900 ml-0.5" />
+                                        }
                                     </div>
                                 </button>
                             </div>
