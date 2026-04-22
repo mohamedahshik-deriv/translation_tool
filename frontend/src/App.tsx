@@ -398,6 +398,7 @@ function UploadStepContent() {
                         <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                         <p className="font-medium mb-1">Drop your video here or click to browse</p>
                         <p className="text-sm text-muted-foreground">MP4, MOV, WebM • Max 50MB</p>
+                        <p className="text-sm text-muted-foreground">1080×1080 • 1080×1350 • 1080×1920 • 1920×1080</p>
                     </label>
                 </div>
             )}
