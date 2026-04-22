@@ -38,7 +38,7 @@ import {
     ArrowRight, Plus, Trash2, Play, Pause, RotateCcw, Volume2, VolumeX,
     Scissors, GripVertical, Clock, FileText, X, BookOpen,
     SkipBack, SkipForward, CheckCircle2, AlertCircle, RefreshCw,
-    ChevronRight, Settings2, Pencil
+    ChevronLeft, ChevronRight, Settings2, Pencil
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -46,6 +46,7 @@ import { useAppStore } from "@/store/app-store";
 import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, SUPPORTED_RESOLUTIONS, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
+import { extractFrame } from "@/lib/frame-extractor";
 
 // ============================================
 // Step Section Component (Accordion Item)
@@ -2870,6 +2871,22 @@ function SceneVideoPlayer({
         setCurrentTime(snapped);
     }, [endTime, FRAME, snapToFrame, stopRVFC]);
 
+    const stepBack = useCallback(() => {
+        const video = videoRef.current;
+        if (!video || isPlaying) return;
+        const snapped = snapToFrame(Math.max(startTime, currentTime - FRAME));
+        video.currentTime = snapped;
+        setCurrentTime(snapped);
+    }, [isPlaying, startTime, currentTime, FRAME, snapToFrame]);
+
+    const stepForward = useCallback(() => {
+        const video = videoRef.current;
+        if (!video || isPlaying) return;
+        const snapped = snapToFrame(Math.min(endTime - FRAME, currentTime + FRAME));
+        video.currentTime = snapped;
+        setCurrentTime(snapped);
+    }, [isPlaying, endTime, currentTime, FRAME, snapToFrame]);
+
     // Shared helper: resolve time from a pointer X position over the progress bar
     const timeFromPointerX = useCallback((clientX: number): number => {
         const bar = progressBarRef.current;
@@ -2929,6 +2946,57 @@ function SceneVideoPlayer({
             stopRVFC();
         };
     }, [stopRVFC]);
+
+    // ─── Hover thumbnail state ─────────────────────────────────────────────────
+    const [hoverThumb, setHoverThumb] = useState<{ url: string; time: number; x: number } | null>(null);
+    const hoverThumbTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleProgressHoverMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (isDraggingRef.current || !videoFile) return;
+        const bar = progressBarRef.current;
+        if (!bar) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const hoverTime = snapToFrame(startTime + pct * duration);
+        // X position clamped so the tooltip card stays within bar bounds
+        const cardHalfW = 60;
+        const clampedX = Math.max(cardHalfW, Math.min(rect.width - cardHalfW, e.clientX - rect.left));
+
+        if (hoverThumbTimeoutRef.current) clearTimeout(hoverThumbTimeoutRef.current);
+        hoverThumbTimeoutRef.current = setTimeout(async () => {
+            try {
+                const result = await extractFrame({ file: videoFile, fileId: videoFile.name + videoFile.size, timestamp: hoverTime, fps: FPS });
+                setHoverThumb({ url: result.url, time: hoverTime, x: clampedX });
+            } catch { /* ignore */ }
+        }, 60);
+    }, [videoFile, snapToFrame, startTime, duration, FPS]);
+
+    const handleProgressHoverLeave = useCallback(() => {
+        if (hoverThumbTimeoutRef.current) clearTimeout(hoverThumbTimeoutRef.current);
+        setHoverThumb(null);
+    }, []);
+
+    // Pre-warm thumbnail cache: extract one frame per second of the scene
+    useEffect(() => {
+        if (!videoFile) return;
+        let cancelled = false;
+        const fileId = videoFile.name + videoFile.size;
+        (async () => {
+            const step = Math.max(1, Math.round(FPS)); // every 1 second
+            const count = Math.ceil(duration * FPS / step);
+            for (let i = 0; i <= count && !cancelled; i++) {
+                const t = snapToFrame(Math.min(endTime - FRAME, startTime + (i * step) / FPS));
+                try { await extractFrame({ file: videoFile, fileId, timestamp: t, fps: FPS }); } catch { /* ignore */ }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [videoFile, startTime, endTime, duration, FPS, FRAME, snapToFrame]);
+
+    // Keyboard shortcuts: ArrowLeft / ArrowRight for frame stepping
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
+    }, [stepBack, stepForward]);
 
     // Format relative frame within scene
     const formatRelFrame = (seconds: number) => `F${Math.round(seconds * FPS)}`;
@@ -3019,6 +3087,9 @@ function SceneVideoPlayer({
         <div
             ref={containerRef}
             className="flex justify-center"
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            style={{ outline: 'none' }}
         >
             {/* Video Container - uses actual input video aspect ratio */}
             <div
@@ -3440,20 +3511,47 @@ function SceneVideoPlayer({
                 {/* Controls Bar */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
                     {/* Progress Bar — supports click + drag */}
-                    <div
-                        ref={progressBarRef}
-                        className="h-3 flex items-center mb-2 cursor-pointer group touch-none"
-                        onPointerDown={handleProgressPointerDown}
-                        onPointerMove={handleProgressPointerMove}
-                        onPointerUp={handleProgressPointerUp}
-                        onPointerCancel={handleProgressPointerUp}
-                    >
-                        <div className="relative w-full h-1.5 bg-white/30 rounded-full">
+                    {/* Progress bar with hover thumbnail */}
+                    <div className="relative mb-2">
+                        {/* Hover thumbnail card */}
+                        {hoverThumb && (
                             <div
-                                className="h-full bg-primary rounded-full relative"
-                                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                className="absolute bottom-full mb-2 pointer-events-none z-50"
+                                style={{ left: `${hoverThumb.x}px`, transform: 'translateX(-50%)' }}
                             >
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow transition-transform group-hover:scale-125" />
+                                <div className="bg-black/90 rounded-lg overflow-hidden shadow-xl border border-white/20 flex flex-col items-center">
+                                    <img
+                                        src={hoverThumb.url}
+                                        alt="frame preview"
+                                        className="block"
+                                        style={{ width: '120px', height: 'auto', display: 'block' }}
+                                    />
+                                    <span className="text-white text-[10px] font-mono py-1">
+                                        {formatRelFrame(hoverThumb.time - startTime)}
+                                    </span>
+                                </div>
+                                {/* Arrow */}
+                                <div className="flex justify-center">
+                                    <div className="w-0 h-0" style={{ borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid rgba(0,0,0,0.9)' }} />
+                                </div>
+                            </div>
+                        )}
+                        <div
+                            ref={progressBarRef}
+                            className="h-3 flex items-center cursor-pointer group touch-none"
+                            onPointerDown={handleProgressPointerDown}
+                            onPointerMove={(e) => { handleProgressPointerMove(e); handleProgressHoverMove(e); }}
+                            onPointerUp={handleProgressPointerUp}
+                            onPointerCancel={handleProgressPointerUp}
+                            onPointerLeave={handleProgressHoverLeave}
+                        >
+                            <div className="relative w-full h-1.5 bg-white/30 rounded-full">
+                                <div
+                                    className="h-full bg-primary rounded-full relative"
+                                    style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                >
+                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow transition-transform group-hover:scale-125" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3470,6 +3568,14 @@ function SceneVideoPlayer({
                                 <SkipBack className="w-4 h-4" />
                             </button>
                             <button
+                                onClick={stepBack}
+                                className="p-1.5 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30"
+                                title="Previous frame (←)"
+                                disabled={isPlaying}
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button
                                 onClick={togglePlay}
                                 className="p-1.5 rounded-full hover:bg-white/20 transition-colors"
                             >
@@ -3478,6 +3584,14 @@ function SceneVideoPlayer({
                                 ) : (
                                     <Play className="w-4 h-4" />
                                 )}
+                            </button>
+                            <button
+                                onClick={stepForward}
+                                className="p-1.5 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30"
+                                title="Next frame (→)"
+                                disabled={isPlaying}
+                            >
+                                <ChevronRight className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={goToLastFrame}
