@@ -562,6 +562,7 @@ function SceneTimeline({
     fps,
     transcripts,
     hasAudio,
+    audioFile,
 }: {
     duration: number;
     cutPoints: number[];
@@ -574,14 +575,84 @@ function SceneTimeline({
     fps?: number;
     transcripts?: string[];
     hasAudio?: boolean;
+    audioFile?: File;
 }) {
     const timelineRef = useRef<HTMLDivElement>(null);
+    const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
     const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
     const [selectedCutIndex, setSelectedCutIndex] = useState<number | null>(null);
     const [hoverTime, setHoverTime] = useState<number | null>(null);
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const [waveformPeaks, setWaveformPeaks] = useState<Float32Array | null>(null);
     const FPS = fps ?? 30;
     const FRAME = 1 / FPS; // one frame at detected fps
+
+    // Decode audio and compute per-pixel peak amplitudes
+    useEffect(() => {
+        if (!audioFile) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const arrayBuffer = await audioFile.arrayBuffer();
+                if (cancelled) return;
+                const audioCtx = new AudioContext();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                if (cancelled) return;
+                audioCtx.close();
+                // Mix down all channels to mono
+                const numChannels = audioBuffer.numberOfChannels;
+                const length = audioBuffer.length;
+                const mono = new Float32Array(length);
+                for (let c = 0; c < numChannels; c++) {
+                    const channel = audioBuffer.getChannelData(c);
+                    for (let i = 0; i < length; i++) mono[i] += channel[i] / numChannels;
+                }
+                // Downsample to 1000 buckets (more than enough for any screen width)
+                const BUCKETS = 1000;
+                const peaks = new Float32Array(BUCKETS);
+                const bucketSize = Math.ceil(length / BUCKETS);
+                for (let b = 0; b < BUCKETS; b++) {
+                    let max = 0;
+                    const start = b * bucketSize;
+                    const end = Math.min(start + bucketSize, length);
+                    for (let i = start; i < end; i++) {
+                        const abs = Math.abs(mono[i]);
+                        if (abs > max) max = abs;
+                    }
+                    peaks[b] = max;
+                }
+                if (!cancelled) setWaveformPeaks(peaks);
+            } catch { /* audio decode failed — silently skip waveform */ }
+        })();
+        return () => { cancelled = true; };
+    }, [audioFile]);
+
+    // Draw waveform onto canvas whenever peaks change
+    useEffect(() => {
+        const canvas = waveformCanvasRef.current;
+        if (!canvas || !waveformPeaks) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const W = canvas.width;
+        const H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(15,15,25,1)';
+        ctx.fillRect(0, 0, W, H);
+        const mid = H / 2;
+        for (let x = 0; x < W; x++) {
+            const bucketIdx = Math.floor((x / W) * waveformPeaks.length);
+            const peak = waveformPeaks[bucketIdx] ?? 0;
+            const barH = Math.max(1, Math.round(peak * H * 0.9));
+            const intensity = Math.min(1, peak * 1.5);
+            const r = Math.round(40 + intensity * 160);
+            const g = Math.round(100 + intensity * 155);
+            const b = Math.round(200 + intensity * 55);
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, mid - barH / 2, 1, barH);
+        }
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(0, mid, W, 1);
+    }, [waveformPeaks]);
 
     // Snap a time value to the nearest frame boundary
     const snapToFrame = useCallback((time: number) => {
@@ -1000,6 +1071,43 @@ function SceneTimeline({
                 )}
             </div>
 
+            {/* Waveform strip — shown only when audio is available */}
+            {waveformPeaks && (
+                <div className="relative mt-1 rounded-lg overflow-hidden" style={{ height: '40px' }}>
+                    <canvas
+                        ref={waveformCanvasRef}
+                        width={1000}
+                        height={40}
+                        className="w-full h-full"
+                        style={{ display: 'block', imageRendering: 'pixelated' }}
+                    />
+                    {/* Cut lines extended into waveform strip */}
+                    {cutPoints.map((cp, i) => (
+                        <div
+                            key={`wf-cut-${i}`}
+                            className="absolute top-0 bottom-0 w-px bg-white/60 pointer-events-none"
+                            style={{ left: `${(cp / duration) * 100}%` }}
+                        />
+                    ))}
+                    {/* Playhead */}
+                    <div
+                        className="absolute top-0 bottom-0 w-px bg-yellow-400 pointer-events-none"
+                        style={{ left: `${(currentTime / duration) * 100}%` }}
+                    />
+                    {/* Hover line */}
+                    {hoverTime !== null && (
+                        <div
+                            className="absolute top-0 bottom-0 w-px bg-white/40 pointer-events-none"
+                            style={{ left: `${(hoverTime / duration) * 100}%` }}
+                        />
+                    )}
+                    {/* Label */}
+                    <span className="absolute top-1 left-2 text-[9px] font-mono text-white/40 pointer-events-none select-none">
+                        AUDIO
+                    </span>
+                </div>
+            )}
+
             {/* Scene table */}
             {allCuts.length > 1 && (
                 <div className="mt-3 rounded-lg border border-border overflow-hidden text-xs font-mono">
@@ -1060,7 +1168,7 @@ function SceneTimeline({
 }
 
 function AnalyzeStepContent() {
-    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints, audioFile, setAudioFile } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -1292,6 +1400,7 @@ function AnalyzeStepContent() {
             const silentFile = new File([silentBlob], 'silent.mp4', { type: 'video/mp4' });
             const audioFile = new File([audioBlob], 'audio.mp3', { type: 'audio/mpeg' });
             console.log(`Silent video: ${(silentFile.size / 1024 / 1024).toFixed(2)} MB, Audio: ${(audioFile.size / 1024).toFixed(0)} KB`);
+            setAudioFile(audioFile);
             setProgress(20);
 
             // Step 2: Upload both processed files + original to Supabase in parallel
@@ -1578,6 +1687,7 @@ function AnalyzeStepContent() {
                                 fps={video?.frameRate}
                                 transcripts={scriptEntries.map(e => e?.voiceover || '')}
                                 hasAudio={videoHasAudio ?? undefined}
+                                audioFile={audioFile ?? undefined}
                             />
 
 

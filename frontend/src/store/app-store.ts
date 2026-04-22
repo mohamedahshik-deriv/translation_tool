@@ -99,6 +99,10 @@ interface AppState {
     videoHasAudio: boolean | null; // null = not yet determined
     setVideoHasAudio: (value: boolean) => void;
 
+    // Extracted audio file (MP3) from /api/process-video — used for waveform rendering
+    audioFile: File | null;
+    setAudioFile: (file: File | null) => void;
+
     // Suggested text colour derived from video luminance (set after /api/process-video)
     suggestedTextColor: string;
     setSuggestedTextColor: (color: string) => void;
@@ -150,6 +154,7 @@ const initialState = {
     outroConfig: DEFAULT_OUTRO_CONFIG,
     exportJobs: [],
     videoHasAudio: null,
+    audioFile: null as File | null,
     suggestedTextColor: '#ffffff',
     suggestedOutroTextColor: '#181C25',
     detectedVoiceoverLanguage: null as { code: string; name: string } | null,
@@ -312,6 +317,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
     setVideoHasAudio: (value) => set({ videoHasAudio: value }),
+
+    setAudioFile: (file) => set({ audioFile: file }),
 
     setSuggestedTextColor: (color) => set({ suggestedTextColor: color }),
 
