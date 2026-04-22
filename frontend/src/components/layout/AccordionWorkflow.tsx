@@ -55,11 +55,10 @@ function StepSection({
         <motion.div
             layout
             className={cn(
-                "rounded-xl border overflow-hidden transition-colors duration-200",
-                isActive && !isCompleted && "border-primary/50 bg-surface",
-                isCompleted && "border-success/30 bg-success/5",
-                isLocked && "border-border/50 bg-muted/20 opacity-60",
-                !isActive && !isCompleted && !isLocked && "border-border bg-surface"
+                "glass rounded-2xl overflow-hidden transition-all duration-300",
+                isActive && !isCompleted && "ring-2 ring-blue-300/50 shadow-xl shadow-blue-200/20",
+                isCompleted && "ring-2 ring-emerald-300/50 shadow-lg shadow-emerald-200/15",
+                isLocked && "opacity-50 grayscale-[25%]",
             )}
         >
             {/* Header - Always visible */}
@@ -68,7 +67,7 @@ function StepSection({
                 disabled={isLocked}
                 className={cn(
                     "w-full flex items-center gap-4 p-4 text-left transition-colors",
-                    !isLocked && "hover:bg-muted/30",
+                    !isLocked && "hover:bg-white/30",
                     isLocked && "cursor-not-allowed"
                 )}
             >
@@ -76,11 +75,11 @@ function StepSection({
                 <div
                     className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-full text-sm font-medium transition-all",
-                        isCompleted && "bg-success text-success-foreground",
-                        isActive && !isCompleted && "bg-primary text-primary-foreground",
-                        isProcessing && "bg-primary text-primary-foreground animate-pulse",
-                        isLocked && "bg-muted text-muted-foreground",
-                        !isActive && !isCompleted && !isLocked && "bg-muted text-muted-foreground"
+                        isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-200/50",
+                        isActive && !isCompleted && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md shadow-blue-200/50",
+                        isProcessing && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md animate-pulse",
+                        isLocked && "bg-white/50 text-muted-foreground border border-white/60",
+                        !isActive && !isCompleted && !isLocked && "bg-white/40 text-muted-foreground border border-white/60"
                     )}
                 >
                     {isProcessing ? (
@@ -106,12 +105,12 @@ function StepSection({
                             {step.label}
                         </h3>
                         {isCompleted && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
                                 Done
                             </span>
                         )}
                         {isProcessing && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                                 Processing...
                             </span>
                         )}
@@ -146,7 +145,7 @@ function StepSection({
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="overflow-hidden"
                     >
-                        <div className="px-4 pb-4 pt-2 border-t border-border/50">
+                        <div className="px-4 pb-4 pt-2 border-t border-white/50">
                             {children}
                         </div>
                     </motion.div>

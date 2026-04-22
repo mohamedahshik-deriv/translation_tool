@@ -11,11 +11,11 @@ class StepErrorBoundary extends React.Component<
     render() {
         if (this.state.error) {
             return (
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                <div className="p-4 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
                     <p className="font-bold mb-1">Render Error</p>
                     <pre className="text-xs whitespace-pre-wrap">{this.state.error.message}</pre>
                     <button
-                        className="mt-2 px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs"
+                        className="mt-2 px-3 py-1 rounded bg-red-200 text-red-700 text-xs"
                         onClick={() => this.setState({ error: null })}
                     >
                         Retry
@@ -81,11 +81,10 @@ function StepSection({
     return (
         <div
             className={cn(
-                "rounded-xl border overflow-hidden transition-all duration-300",
-                isActive && !isCompleted && "border-primary/50 bg-surface shadow-lg shadow-primary/5",
-                isCompleted && "border-success/30 bg-success/5",
-                isLocked && "border-border/50 bg-muted/10 opacity-50",
-                !isActive && !isCompleted && !isLocked && "border-border bg-surface"
+                "glass rounded-2xl overflow-hidden transition-all duration-300",
+                isActive && !isCompleted && "ring-2 ring-blue-300/50 shadow-xl shadow-blue-200/20",
+                isCompleted && "ring-2 ring-emerald-300/50 shadow-lg shadow-emerald-200/15",
+                isLocked && "opacity-50 grayscale-[25%]",
             )}
         >
             {/* Header */}
@@ -94,7 +93,7 @@ function StepSection({
                 disabled={isLocked}
                 className={cn(
                     "w-full flex items-center gap-4 p-4 text-left transition-colors",
-                    !isLocked && "hover:bg-muted/20",
+                    !isLocked && "hover:bg-white/30",
                     isLocked && "cursor-not-allowed"
                 )}
             >
@@ -102,11 +101,11 @@ function StepSection({
                 <div
                     className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-full text-sm font-medium transition-all shrink-0",
-                        isCompleted && "bg-success text-white",
-                        isActive && !isCompleted && "bg-primary text-white",
-                        isProcessing && "bg-primary text-white animate-pulse",
-                        isLocked && "bg-muted text-muted-foreground",
-                        !isActive && !isCompleted && !isLocked && "bg-muted text-muted-foreground"
+                        isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-200/50",
+                        isActive && !isCompleted && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md shadow-blue-200/50",
+                        isProcessing && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md animate-pulse",
+                        isLocked && "bg-white/50 text-muted-foreground border border-white/60",
+                        !isActive && !isCompleted && !isLocked && "bg-white/40 text-muted-foreground border border-white/60"
                     )}
                 >
                     {isProcessing ? (
@@ -132,12 +131,12 @@ function StepSection({
                             {title}
                         </h3>
                         {isCompleted && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success font-medium">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium border border-emerald-200">
                                 ✓ Done
                             </span>
                         )}
                         {isProcessing && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium border border-blue-200">
                                 Processing...
                             </span>
                         )}
@@ -166,7 +165,7 @@ function StepSection({
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                     >
-                        <div className="px-4 pb-4 border-t border-border/50">
+                        <div className="px-4 pb-4 border-t border-white/50">
                             {children}
                         </div>
                     </motion.div>
@@ -373,7 +372,7 @@ function UploadStepContent() {
         <div className="pt-4 space-y-4">
             {/* Video Upload */}
             {video ? (
-                <div className="flex items-center gap-4 p-3 rounded-lg bg-surface-elevated border border-border">
+                <div className="flex items-center gap-4 p-3 rounded-xl glass-subtle border-0">
                     <video
                         src={video.url}
                         className="w-24 h-16 object-cover rounded"
@@ -399,7 +398,7 @@ function UploadStepContent() {
                     onDrop={handleDrop}
                     className={cn(
                         "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
-                        isDragging ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/50"
+                        isDragging ? "border-primary/70 bg-primary/5 shadow-inner" : "border-white/60 bg-white/30 hover:bg-white/45"
                     )}
                 >
                     <input
@@ -410,7 +409,9 @@ function UploadStepContent() {
                         id="video-upload"
                     />
                     <label htmlFor="video-upload" className="cursor-pointer">
-                        <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-cyan-400 via-blue-500 to-fuchsia-500 shadow-lg shadow-blue-300/40 mx-auto mb-4">
+                            <Upload className="w-8 h-8 text-white" />
+                        </div>
                         <p className="font-medium mb-1">Drop your video here or click to browse</p>
                         <p className="text-sm text-muted-foreground">MP4, MOV, WebM • Max 50MB</p>
                         <p className="text-sm text-muted-foreground">1080×1080 • 1080×1350 • 1080×1920 • 1920×1080</p>
@@ -418,7 +419,7 @@ function UploadStepContent() {
                 </div>
             )}
             {videoUploadError && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-100 px-3 py-2.5 text-sm text-red-700">
                     <span className="mt-0.5 shrink-0">⚠</span>
                     <span>{videoUploadError}</span>
                 </div>
@@ -426,7 +427,7 @@ function UploadStepContent() {
 
             {/* Dev shortcut — skip upload & analysis */}
             {!video && (
-                <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
+                <div className="rounded-xl border border-dashed border-white/60 bg-white/30 p-3 space-y-2">
                     <p className="text-xs text-muted-foreground text-center font-medium">Use Dummy Data (Dev)</p>
                     <div className="grid grid-cols-4 gap-1.5">
                         {(['1080x1080', '1080x1350', '1080x1920', '1920x1080'] as VideoResolution[]).map((res) => (
@@ -437,8 +438,8 @@ function UploadStepContent() {
                                 className={cn(
                                     "text-xs rounded-md px-2 py-1.5 border transition-colors",
                                     dummyResolution === res
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border text-muted-foreground hover:border-muted-foreground/50"
+                                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                        : "border-white/60 bg-white/40 text-muted-foreground hover:bg-white/60"
                                 )}
                             >
                                 {res}
@@ -448,7 +449,7 @@ function UploadStepContent() {
                     <button
                         type="button"
                         onClick={handleUseDummyData}
-                        className="w-full text-xs text-primary border border-primary/40 rounded-md px-4 py-2 hover:bg-primary/10 transition-colors"
+                        className="w-full text-xs text-primary border border-primary/40 rounded-md px-4 py-2 hover:bg-primary/10 bg-white/40 transition-colors"
                     >
                         Load Dummy Data →
                     </button>
@@ -467,9 +468,9 @@ function UploadStepContent() {
                 </p>
 
                 {script ? (
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-elevated border border-border">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-                            <FileText className="w-4 h-4 text-primary" />
+                    <div className="flex items-center gap-3 p-3 rounded-xl glass-subtle border-0">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100">
+                            <FileText className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{script.name}</p>
@@ -492,7 +493,7 @@ function UploadStepContent() {
                         onDrop={handleScriptDrop}
                         className={cn(
                             "border-2 border-dashed rounded-xl p-5 text-center transition-all",
-                            isScriptDragging ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/50",
+                            isScriptDragging ? "border-primary/70 bg-primary/5 shadow-inner" : "border-white/60 bg-white/30 hover:bg-white/45",
                             isParsingScript && "opacity-60 pointer-events-none"
                         )}
                     >
@@ -522,7 +523,7 @@ function UploadStepContent() {
                 )}
 
                 {scriptError && (
-                    <p className="text-xs text-red-400 flex items-center gap-1">
+                    <p className="text-xs text-red-600 flex items-center gap-1">
                         <X className="w-3 h-3" />
                         {scriptError}
                     </p>
@@ -904,7 +905,7 @@ function SceneTimeline({
                 {selectedCutIndex !== null && cutPoints[selectedCutIndex] !== undefined ? (
                     // ── Cut selected: nudge + delete controls ──
                     <>
-                        <span className="text-yellow-400 font-medium text-[10px]">Cut {selectedCutIndex + 1} selected</span>
+                        <span className="text-yellow-600 font-medium text-[10px]">Cut {selectedCutIndex + 1} selected</span>
                         <div className="flex items-center gap-1">
                             {/* Prev frame */}
                             <button
@@ -915,15 +916,15 @@ function SceneTimeline({
                                     onMoveCut(selectedCutIndex, newTime);
                                     onSeek(newTime);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-400"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-600"
                             >
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                                     <rect x="1" y="2" width="2" height="8" rx="0.5" />
                                     <path d="M10 2L4 6l6 4V2z" />
                                 </svg>
                             </button>
-                            <Scissors className="w-3 h-3 text-yellow-400" />
-                            <span className="font-medium mx-1 text-yellow-400">{formatTime(cutPoints[selectedCutIndex])}</span>
+                            <Scissors className="w-3 h-3 text-yellow-600" />
+                            <span className="font-medium mx-1 text-yellow-600">{formatTime(cutPoints[selectedCutIndex])}</span>
                             {/* Next frame */}
                             <button
                                 type="button"
@@ -933,7 +934,7 @@ function SceneTimeline({
                                     onMoveCut(selectedCutIndex, newTime);
                                     onSeek(newTime);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-400"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-600"
                             >
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                                     <rect x="9" y="2" width="2" height="8" rx="0.5" />
@@ -948,7 +949,7 @@ function SceneTimeline({
                                     onRemoveCut(selectedCutIndex);
                                     setSelectedCutIndex(null);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-red-500/20 transition-colors text-red-400 ml-1"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-red-500/20 transition-colors text-red-600 ml-1"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1584,7 +1585,7 @@ function AnalyzeStepContent() {
 
                     {/* Script indicator banner */}
                     {script && (
-                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/10 border border-primary/20">
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-100 border border-blue-200">
                             <FileText className="w-4 h-4 text-primary shrink-0" />
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium text-primary">Script loaded: {script.name}</p>
@@ -1627,7 +1628,7 @@ function AnalyzeStepContent() {
                             <span className="text-sm font-medium">{allScenes.length} scenes</span>
                             {/* Voiceover detection badge — only shown after a no-script analysis */}
                             {!script && detectedVoiceover === true && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-600 border border-green-300">
                                     <Mic className="w-3 h-3 shrink-0" />
                                     <span>
                                         Voiceover detected
@@ -1638,7 +1639,7 @@ function AnalyzeStepContent() {
                                 </span>
                             )}
                             {!script && detectedVoiceover === false && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300">
                                     <Type className="w-3 h-3" /> No voiceover — text extracted
                                 </span>
                             )}
@@ -1730,8 +1731,8 @@ function AnalyzeStepContent() {
                                             className={cn(
                                                 'text-xs px-1.5 py-0.5 rounded border transition-colors shrink-0',
                                                 segments[i]?.isOutro
-                                                    ? 'border-amber-500 text-amber-400 bg-amber-500/10 cursor-default'
-                                                    : 'border-border text-muted-foreground hover:border-amber-500/50 hover:text-amber-400'
+                                                    ? 'border-amber-500 text-amber-700 bg-amber-100 cursor-default'
+                                                    : 'border-border text-muted-foreground hover:border-amber-500/50 hover:text-amber-700'
                                             )}
                                             title={segments[i]?.isOutro ? 'This is the Outro' : 'Set as Outro'}
                                         >
@@ -1745,7 +1746,7 @@ function AnalyzeStepContent() {
                                                     // Last segment: remove the cut before it (merges into previous)
                                                     handleRemoveCut(i < cutPoints.length ? i : i - 1);
                                                 }}
-                                                className="p-1 text-muted-foreground hover:text-red-400 shrink-0"
+                                                className="p-1 text-muted-foreground hover:text-red-600 shrink-0"
                                                 title={i === cutPoints.length ? "Merge with previous scene" : "Remove this cut point"}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1762,7 +1763,7 @@ function AnalyzeStepContent() {
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <div className="flex items-center gap-1.5">
-                                                        <Mic className="w-3 h-3 text-green-400 shrink-0" />
+                                                        <Mic className="w-3 h-3 text-green-600 shrink-0" />
                                                         <span className="text-[10px] text-muted-foreground">Editing voiceover</span>
                                                     </div>
                                                     <textarea
@@ -1780,12 +1781,12 @@ function AnalyzeStepContent() {
                                                                 setEditingVoiceoverValue('');
                                                             }
                                                         }}
-                                                        className="w-full text-xs text-green-400 bg-surface border border-green-400/30 rounded p-1.5 resize-none focus:outline-none focus:border-green-400/60"
+                                                        className="w-full text-xs text-green-700 bg-green-50 border border-green-300 rounded p-1.5 resize-none focus:outline-none focus:border-green-500"
                                                         rows={3}
                                                     />
                                                     <div className="flex gap-1.5">
                                                         <button
-                                                            className="text-[10px] px-2 py-0.5 rounded bg-green-500/20 border border-green-400/50 text-green-400 hover:bg-green-500/30 transition-colors"
+                                                            className="text-[10px] px-2 py-0.5 rounded bg-green-100 border border-green-300 text-green-700 hover:bg-green-200 transition-colors"
                                                             onClick={() => {
                                                                 updateScriptEntry(i, { voiceover: editingVoiceoverValue.trim() });
                                                                 setEditingVoiceoverIdx(null);
@@ -1795,7 +1796,7 @@ function AnalyzeStepContent() {
                                                             Save
                                                         </button>
                                                         <button
-                                                            className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/50 transition-colors"
+                                                            className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-red-600 hover:border-red-400/50 transition-colors"
                                                             onClick={() => {
                                                                 setEditingVoiceoverIdx(null);
                                                                 setEditingVoiceoverValue('');
@@ -1832,12 +1833,12 @@ function AnalyzeStepContent() {
                                                     }}
                                                 >
                                                     <GripVertical className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5 transition-opacity" />
-                                                    <Mic className="w-3 h-3 text-green-400 shrink-0 mt-0.5" />
-                                                    <p className="text-xs text-green-400 leading-relaxed flex-1">
+                                                    <Mic className="w-3 h-3 text-green-600 shrink-0 mt-0.5" />
+                                                    <p className="text-xs text-green-600 leading-relaxed flex-1">
                                                         &ldquo;{scriptEntry?.voiceover}&rdquo;
                                                     </p>
                                                     <button
-                                                        className="opacity-0 group-hover:opacity-60 shrink-0 ml-1 hover:opacity-100 transition-opacity text-muted-foreground hover:text-green-400"
+                                                        className="opacity-0 group-hover:opacity-60 shrink-0 ml-1 hover:opacity-100 transition-opacity text-muted-foreground hover:text-green-600"
                                                         title="Edit voiceover"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -1851,7 +1852,7 @@ function AnalyzeStepContent() {
                                             ) : (
                                                 /* ── No voiceover yet — show add button ── */
                                                 <button
-                                                    className="flex items-center gap-1.5 pl-2 text-[10px] text-muted-foreground hover:text-green-400 transition-colors"
+                                                    className="flex items-center gap-1.5 pl-2 text-[10px] text-muted-foreground hover:text-green-600 transition-colors"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setEditingVoiceoverIdx(i);
@@ -1871,7 +1872,7 @@ function AnalyzeStepContent() {
                                                 >
                                                     <span className="text-[10px] text-muted-foreground">Place dragged text:</span>
                                                     <button
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-400/50 text-green-400 hover:bg-green-400/10 transition-colors"
+                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors"
                                                         onClick={() => {
                                                             const { fromIdx, toIdx } = pendingDrop;
                                                             const fromText = scriptEntries[fromIdx]?.voiceover ?? '';
@@ -1884,7 +1885,7 @@ function AnalyzeStepContent() {
                                                         Before
                                                     </button>
                                                     <button
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-400/50 text-green-400 hover:bg-green-400/10 transition-colors"
+                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors"
                                                         onClick={() => {
                                                             const { fromIdx, toIdx } = pendingDrop;
                                                             const fromText = scriptEntries[fromIdx]?.voiceover ?? '';
@@ -1897,7 +1898,7 @@ function AnalyzeStepContent() {
                                                         After
                                                     </button>
                                                     <button
-                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/50 transition-colors ml-auto"
+                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-red-600 hover:border-red-400/50 transition-colors ml-auto"
                                                         onClick={() => setPendingDrop(null)}
                                                         title="Cancel"
                                                     >
@@ -3382,7 +3383,7 @@ function SceneVideoPlayer({
                                         }}
                                     />
                                     <div
-                                        className="absolute text-[6px] font-mono text-green-400/90 px-1"
+                                        className="absolute text-[6px] font-mono text-green-600/90 px-1"
                                         style={{
                                             bottom: `${contentBottomH + 0.3}%`,
                                             ...(contentBottomIsRight ? { right: '0.5%' } : { left: '0.5%' }),
@@ -3406,7 +3407,7 @@ function SceneVideoPlayer({
                                 }}
                             />
                             <div
-                                className="absolute text-[6px] font-mono text-yellow-400/90 px-1"
+                                className="absolute text-[6px] font-mono text-yellow-600/90 px-1"
                                 style={{ bottom: `${noteTop + 0.3}%`, left: `${noteLeft + 0.5}%` }}
                             >
                                 Note · {z.noteWidth ?? ''}×{z.noteHeight}px · {z.noteBottom}px from bottom
@@ -3821,8 +3822,8 @@ function EditTextStepContent() {
                                 className={cn(
                                     "flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors",
                                     showSafeArea
-                                        ? "border-red-400/60 text-red-400 bg-red-400/10"
-                                        : "border-border text-muted-foreground hover:border-red-400/40 hover:text-red-400"
+                                        ? "border-red-400 text-red-600 bg-red-100"
+                                        : "border-border text-muted-foreground hover:border-red-300 hover:text-red-600"
                                 )}
                                 title="Toggle safe area overlay"
                             >
@@ -3905,10 +3906,10 @@ function EditTextStepContent() {
 
             {/* Outro scene indicator */}
             {segments[activeSegment]?.isOutro && segments.length > 0 && (
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300">
                     <span className="text-base">🎬</span>
                     <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-amber-400">Outro Scene — CTA Text</p>
+                        <p className="text-xs font-semibold text-amber-700">Outro Scene — CTA Text</p>
                         <p className="text-xs text-muted-foreground">CTA centered horizontally • 945px from top (49.2%) • 40px font • animation starts at 2s</p>
                     </div>
                 </div>
@@ -4216,7 +4217,7 @@ function EditTextStepContent() {
                                 <div className="flex justify-end">
                                     <button
                                         onClick={() => handleDeleteLayer(layer.id)}
-                                        className="text-red-400 hover:text-red-300 p-1 flex items-center gap-1 text-xs"
+                                        className="text-red-600 hover:text-red-800 p-1 flex items-center gap-1 text-xs"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                         <span>Delete</span>
@@ -4236,7 +4237,7 @@ function EditTextStepContent() {
                                         e.stopPropagation();
                                         handleDeleteLayer(layer.id);
                                     }}
-                                    className="text-muted-foreground hover:text-red-400 p-1 shrink-0"
+                                    className="text-muted-foreground hover:text-red-600 p-1 shrink-0"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -4255,7 +4256,7 @@ function EditTextStepContent() {
                         <Button
                             variant="outline"
                             size="sm"
-                            className="w-full text-red-400 border-red-400/30 hover:bg-red-400/10 hover:border-red-400/50"
+                            className="w-full text-red-600 border-red-300 hover:bg-red-100 hover:border-red-400"
                             onClick={() => {
                                 if (window.confirm('Remove all text overlays from all scenes?')) {
                                     setSegments(segments.map(seg => ({ ...seg, textLayers: [] })));
@@ -4270,7 +4271,7 @@ function EditTextStepContent() {
                         <Button
                             variant="outline"
                             size="sm"
-                            className="w-full text-purple-400 border-purple-400/30 hover:bg-purple-400/10 hover:border-purple-400/50"
+                            className="w-full text-purple-600 border-purple-300 hover:bg-purple-100 hover:border-purple-400"
                             disabled={isCopywriting}
                             onClick={async () => {
                                 const allOverlays = segments
@@ -4322,7 +4323,7 @@ function EditTextStepContent() {
 
             {/* Error banner */}
             {copywriteError && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 border border-red-300 text-xs text-red-700">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{copywriteError}</span>
                     <button onClick={() => setCopywriteError(null)} className="ml-auto">
@@ -4628,7 +4629,7 @@ function TranslateStepContent() {
                             <span className="text-sm font-medium">{lang.name}</span>
                             {status === 'pending' && <Loader2 className="w-3.5 h-3.5 ml-auto animate-spin text-primary" />}
                             {status === 'done' && <Check className="w-3.5 h-3.5 ml-auto text-success" />}
-                            {status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-400" />}
+                            {status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-600" />}
                             {!status && selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />}
                         </button>
                     );
@@ -4696,13 +4697,13 @@ function TranslateStepContent() {
                         if (isSourceLang) return null;
                         const langStatus = highlightStatus[activePreviewLang] ?? 'idle';
                         if (langStatus === 'running') return (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-400">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-100 border border-purple-300/60 text-xs text-purple-700">
                                 <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
                                 <span>Applying copywrite highlights…</span>
                             </div>
                         );
                         if (langStatus === 'error') return (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 border border-red-300 text-xs text-red-700">
                                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                                 <span>{highlightError ?? 'Failed to apply highlights'}</span>
                                 <button
@@ -4824,7 +4825,7 @@ function TranslateStepContent() {
                                                 </div>
                                             ) : (
                                                 <span className="text-primary font-medium block">
-                                                    <RichTextContent content={tr.translatedContent} defaultColor="#a78bfa" />
+                                                    <RichTextContent content={tr.translatedContent} defaultColor="#7c3aed" />
                                                 </span>
                                             )}
                                         </div>
@@ -4976,8 +4977,8 @@ function TranslateVoiceoverStepContent() {
             )}
 
             {voiceoverScenes.length === 0 ? (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-center space-y-2">
-                    <p className="text-sm text-amber-400 font-medium">No voiceover detected</p>
+                <div className="rounded-lg border border-amber-300 bg-amber-100 p-4 text-center space-y-2">
+                    <p className="text-sm text-amber-700 font-medium">No voiceover detected</p>
                     <p className="text-xs text-muted-foreground">No spoken audio was found in the analyzed scenes. You can still dub the video manually in the next step.</p>
                     <Button variant="gradient" className="w-full mt-2" onClick={() => setCurrentStep('dub')}>
                         Continue to Dubbing
@@ -5012,8 +5013,8 @@ function TranslateVoiceoverStepContent() {
                                     return (
                                         <div key={lang} className={cn(
                                             "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
-                                            status === 'done' ? "border-green-500/40 bg-green-500/10 text-green-400" :
-                                            status === 'error' ? "border-red-500/40 bg-red-500/10 text-red-400" :
+                                            status === 'done' ? "border-green-300 bg-green-100 text-green-700" :
+                                            status === 'error' ? "border-red-300 bg-red-100 text-red-700" :
                                             "border-border bg-surface text-muted-foreground"
                                         )}>
                                             <span>{langMeta?.flag}</span>
@@ -5635,7 +5636,7 @@ function DubStepContent() {
                                     ElevenLabs auto-detects the speaker, clones their voice, translates, and dubs. Uses ElevenLabs&apos; own AI voices — <strong>not</strong> the preset voices below.
                                 </p>
                                 <div className="flex flex-wrap gap-1.5 mt-2.5">
-                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">Fast</span>
+                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-600 border border-green-300">Fast</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Less Control</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Own Voices</span>
                                 </div>
@@ -5665,7 +5666,7 @@ function DubStepContent() {
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">Automated</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">Preset Voices</span>
                                     {hasScript && (
-                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">Script detected</span>
+                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-600 border border-green-300">Script detected</span>
                                     )}
                                 </div>
                             </div>
@@ -6101,10 +6102,10 @@ function OutroStepContent() {
     return (
         <div className="pt-4 space-y-4">
             {/* Info banner */}
-            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300">
                 <span className="text-base shrink-0">🎬</span>
                 <div className="min-w-0">
-                    <p className="text-xs font-semibold text-amber-400">Two text layers will be added to the Outro</p>
+                    <p className="text-xs font-semibold text-amber-700">Two text layers will be added to the Outro</p>
                     <p className="text-xs text-muted-foreground">Layer 1 — CTA (49% from top, 40px) • Layer 2 — Disclaimer (77% from top, 12px, Inter Regular)</p>
                 </div>
             </div>
@@ -6166,8 +6167,8 @@ function OutroStepContent() {
                 {/* Layer 2 — Disclaimer */}
                 <div className="p-3 rounded-lg bg-surface-elevated border border-border space-y-2">
                     <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-amber-400">2</span>
+                        <div className="w-5 h-5 rounded-full bg-amber-200 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-bold text-amber-700">2</span>
                         </div>
                         <label className="text-sm font-medium">Disclaimer Text</label>
                         <span className="text-xs text-muted-foreground ml-auto">77% from top • {resolvedDisclaimerFontSize}px auto • fade at 2s</span>
@@ -6203,9 +6204,9 @@ function OutroStepContent() {
             </div>
 
             {outroTranslateError && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/30">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-red-400">{outroTranslateError}</p>
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-100 border border-red-300">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">{outroTranslateError}</p>
                 </div>
             )}
 
@@ -6446,7 +6447,7 @@ function ExportStepContent() {
                             {isRendering && (
                                 <span className="text-xs text-muted-foreground ml-auto">{progress}%</span>
                             )}
-                            {error && <AlertCircle className="w-4 h-4 text-red-400 ml-auto" />}
+                            {error && <AlertCircle className="w-4 h-4 text-red-600 ml-auto" />}
                         </div>
 
                         {/* Progress bar */}
@@ -6458,7 +6459,7 @@ function ExportStepContent() {
 
                         {/* Error message */}
                         {error && (
-                            <p className="px-4 pb-2 text-xs text-red-400 leading-tight">{error}</p>
+                            <p className="px-4 pb-2 text-xs text-red-700 leading-tight">{error}</p>
                         )}
 
                         {/* Rendered video preview — the actual FFmpeg output, no sync hacks */}
@@ -6588,12 +6589,12 @@ export default function Home() {
     ];
 
     return (
-        <main className="min-h-screen bg-background">
+        <main className="min-h-screen">
             {/* Header */}
-            <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
+            <header className="sticky top-0 z-50 border-b border-white/50 glass-elevated">
                 <div className="max-w-6xl mx-auto px-4 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
                             <Film className="w-5 h-5 text-white" />
                         </div>
                         <div>

@@ -202,7 +202,7 @@ export function SceneAnalyzer() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Video Preview */}
                     <div className="lg:col-span-2">
-                        <div className="rounded-xl overflow-hidden bg-black border border-border">
+                        <div className="rounded-xl overflow-hidden bg-black border border-transparent">
                             <video
                                 src={video.url}
                                 controls
@@ -217,7 +217,7 @@ export function SceneAnalyzer() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
-                                    className="mt-4 p-4 rounded-xl bg-surface border border-border"
+                                    className="mt-4 p-4 rounded-xl glass-subtle"
                                 >
                                     <div className="flex items-center gap-3 mb-3">
                                         <Loader2 className="w-5 h-5 text-primary animate-spin" />
@@ -255,7 +255,7 @@ export function SceneAnalyzer() {
 
                     {/* Right panel — status + actions */}
                     <div className="space-y-4">
-                        <div className="p-4 rounded-xl bg-surface border border-border">
+                        <div className="p-4 rounded-xl glass-subtle">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="font-semibold flex items-center gap-2">
                                     <Scan className="w-4 h-4 text-primary" />
@@ -292,7 +292,7 @@ export function SceneAnalyzer() {
                                 <div className="flex flex-col items-center justify-center py-8 text-center">
                                     {(status === 'idle' || status === 'uploading' || status === 'analyzing') && (
                                         <>
-                                            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+                                            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-3">
                                                 <Loader2 className="w-6 h-6 text-primary animate-spin" />
                                             </div>
                                             <p className="text-sm text-muted-foreground">Analyzing video...</p>
@@ -333,7 +333,7 @@ export function SceneAnalyzer() {
                     <motion.div
                         initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-6 rounded-xl bg-surface border border-border overflow-hidden"
+                        className="mt-6 rounded-xl glass-subtle overflow-hidden"
                     >
                         <div className="overflow-auto max-h-[420px]">
                             <table className="w-full text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
@@ -345,8 +345,8 @@ export function SceneAnalyzer() {
                                     <col />
                                     {editingTimecodes && <col style={{ width: '32px' }} />}
                                 </colgroup>
-                                <thead className="sticky top-0 bg-surface z-10">
-                                    <tr className="border-b border-border text-muted-foreground">
+                                <thead className="sticky top-0 bg-white/60 backdrop-blur-sm z-10">
+                                    <tr className="border-b border-white/50 text-muted-foreground">
                                         <th className="text-right px-2 py-2.5 font-medium">#</th>
                                         <th className="text-left px-2 py-2.5 font-medium font-mono">In</th>
                                         <th className="text-left px-2 py-2.5 font-medium font-mono">Out</th>
@@ -367,8 +367,8 @@ export function SceneAnalyzer() {
                                                 animate={{ opacity: 1 }}
                                                 transition={{ delay: index * 0.02 }}
                                                 className={cn(
-                                                    "border-b border-border/40 hover:bg-muted/20 transition-colors",
-                                                    index === 0 ? "bg-primary/10" : ""
+                                                    "border-b border-white/40 hover:bg-white/30 transition-colors",
+                                                    index === 0 ? "bg-blue-50/60" : ""
                                                 )}
                                             >
                                                 <td className="text-right px-2 py-1.5 text-muted-foreground font-mono">{index + 1}</td>
@@ -406,10 +406,10 @@ export function SceneAnalyzer() {
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-6 p-4 rounded-xl bg-surface border border-border"
+                        className="mt-6 p-4 rounded-xl glass-subtle"
                     >
                         <h3 className="text-sm font-medium mb-3">Timeline</h3>
-                        <div className="relative h-12 bg-surface-elevated rounded-lg overflow-hidden">
+                        <div className="relative h-12 bg-white/50 rounded-lg overflow-hidden border border-white/60">
                             {/* Segments */}
                             {timecodes.slice(0, -1).map((tc, index) => {
                                 const startPercent = (tc / video.duration) * 100;
@@ -420,7 +420,7 @@ export function SceneAnalyzer() {
                                     <div
                                         key={index}
                                         className={cn(
-                                            "absolute top-0 bottom-0 border-r border-border",
+                                            "absolute top-0 bottom-0 border-r border-white/40",
                                             index % 2 === 0 ? "bg-primary/20" : "bg-secondary/20"
                                         )}
                                         style={{
