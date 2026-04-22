@@ -4644,18 +4644,24 @@ function TranslateStepContent() {
                     <div className="flex gap-1.5 flex-wrap">
                         {selectedLanguages.map(code => {
                             const info = langInfo(code);
+                            const isThisLangRunning = highlightStatus[code] === 'running';
                             return (
                                 <button
                                     key={code}
-                                    onClick={() => setActivePreviewLang(code)}
+                                    onClick={() => !isThisLangRunning && setActivePreviewLang(code)}
+                                    disabled={isThisLangRunning}
                                     className={cn(
                                         "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
                                         activePreviewLang === code
                                             ? "bg-primary text-white border-primary"
-                                            : "border-border hover:border-primary/50 text-muted-foreground"
+                                            : "border-border hover:border-primary/50 text-muted-foreground",
+                                        isThisLangRunning && "opacity-50 cursor-not-allowed"
                                     )}
                                 >
-                                    <span>{info?.flag}</span>
+                                    {isThisLangRunning
+                                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        : <span>{info?.flag}</span>
+                                    }
                                     <span>{info?.name}</span>
                                 </button>
                             );
