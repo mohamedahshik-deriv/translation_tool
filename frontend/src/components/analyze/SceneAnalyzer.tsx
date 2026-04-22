@@ -3,8 +3,8 @@ import { useState, useEffect } from "react";
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8000';
 const api = (path: string) => `${BACKEND_URL}${path}`;
 import { motion, AnimatePresence } from "framer-motion";
-import { analyzeScenes, uploadVideo, getPublicUrl, STORAGE_BUCKETS, isSupabaseConfigured } from "@/lib/supabase";
-import { Scan, Play, Pause, ChevronLeft, ChevronRight, Plus, Trash2, Check, AlertCircle, Loader2, Settings } from "lucide-react";
+import { analyzeScenes, verifySceneTimings, uploadVideo, getPublicUrl, STORAGE_BUCKETS, isSupabaseConfigured } from "@/lib/supabase";
+import { Scan, Plus, Trash2, Check, AlertCircle, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/store/app-store";
@@ -27,11 +27,18 @@ export function SceneAnalyzer() {
     const [progress, setProgress] = useState(0);
     const [status, setStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'complete' | 'error'>('idle');
     const [error, setError] = useState<string | null>(null);
-    const [detectedScenes, setDetectedScenes] = useState<{ startTime: number; endTime: number; spokenText: string; textOnScreen: string }[]>([]);
+    const [detectedScenes, setDetectedScenes] = useState<{ startTime: number; endTime: number; narrativeStart: number; narrativeEnd: number; spokenText: string; textOnScreen: string }[]>([]);
     const [timecodes, setTimecodes] = useState<number[]>([]);
     const [editingTimecodes, setEditingTimecodes] = useState(false);
-    const [currentPreviewIndex, setCurrentPreviewIndex] = useState(0);
-    const [isPlaying, setIsPlaying] = useState(false);
+
+    // URLs retained after upload so they can be passed to verify-scene-timings
+    const [uploadedSilentUrl, setUploadedSilentUrl] = useState<string | null>(null);
+    const [uploadedOriginalUrl, setUploadedOriginalUrl] = useState<string | null>(null);
+
+    // Verification state
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [verifyError, setVerifyError] = useState<string | null>(null);
+    const [correctionsSummary, setCorrectionsSummary] = useState<{ total: number; corrected: number } | null>(null);
 
     // Start analysis when component mounts
     useEffect(() => {
@@ -47,6 +54,10 @@ export function SceneAnalyzer() {
         setProgress(0);
         setError(null);
         setIsAnalyzing(true);
+        setCorrectionsSummary(null);
+        setVerifyError(null);
+        setUploadedSilentUrl(null);
+        setUploadedOriginalUrl(null);
 
         try {
             // Step 1: Process video locally (strip audio → silent MP4, extract audio → MP3)
@@ -83,6 +94,10 @@ export function SceneAnalyzer() {
             const videoUrl = getPublicUrl(STORAGE_BUCKETS.VIDEOS, silentPath);
             const audioUrl = getPublicUrl(STORAGE_BUCKETS.AUDIO, audioPath);
 
+            // Retain URLs so the verify step can reuse them without re-uploading
+            setUploadedSilentUrl(videoUrl);
+            setUploadedOriginalUrl(audioUrl);
+
             setProgress(30);
             setStatus('analyzing');
 
@@ -92,7 +107,14 @@ export function SceneAnalyzer() {
             setProgress(80);
 
             setTimecodes(result.timecodes);
-            setDetectedScenes(result.scenes);
+            setDetectedScenes(result.scenes.map(s => ({
+                startTime: s.startTime,
+                endTime: s.endTime,
+                narrativeStart: (s as { narrativeStart?: number }).narrativeStart ?? s.startTime,
+                narrativeEnd: (s as { narrativeEnd?: number }).narrativeEnd ?? s.endTime,
+                spokenText: s.spokenText,
+                textOnScreen: s.textOnScreen,
+            })));
 
             setProgress(100);
             setStatus('complete');
@@ -102,6 +124,42 @@ export function SceneAnalyzer() {
             setStatus('error');
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+
+    const handleVerifyTimings = async () => {
+        if (!video || !uploadedSilentUrl || detectedScenes.length === 0) return;
+
+        setIsVerifying(true);
+        setVerifyError(null);
+        setCorrectionsSummary(null);
+
+        try {
+            const result = await verifySceneTimings(
+                uploadedSilentUrl,
+                video.duration,
+                detectedScenes,
+                uploadedOriginalUrl ?? undefined,
+            );
+
+            setTimecodes(result.timecodes);
+            setDetectedScenes(result.scenes.map(s => ({
+                startTime: s.startTime,
+                endTime: s.endTime,
+                narrativeStart: (s as { narrativeStart?: number }).narrativeStart ?? s.startTime,
+                narrativeEnd: (s as { narrativeEnd?: number }).narrativeEnd ?? s.endTime,
+                spokenText: s.spokenText,
+                textOnScreen: s.textOnScreen,
+            })));
+
+            if (result.correctionsSummary) {
+                setCorrectionsSummary(result.correctionsSummary);
+            }
+        } catch (err) {
+            console.error('Verification failed:', err);
+            setVerifyError(err instanceof Error ? err.message : 'Failed to verify scene timings');
+        } finally {
+            setIsVerifying(false);
         }
     };
 
@@ -312,14 +370,55 @@ export function SceneAnalyzer() {
                                     variant="gradient"
                                     className="w-full"
                                     onClick={handleConfirmSegments}
+                                    disabled={isVerifying}
                                 >
                                     <Check className="w-4 h-4 mr-2" />
                                     Confirm {timecodes.length - 1} Segments
                                 </Button>
+
+                                <Button
+                                    variant="outline"
+                                    className="w-full"
+                                    onClick={handleVerifyTimings}
+                                    disabled={isVerifying || !uploadedSilentUrl}
+                                >
+                                    {isVerifying ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            Verifying timecodes…
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ShieldCheck className="w-4 h-4 mr-2" />
+                                            Verify &amp; Fix Timings
+                                        </>
+                                    )}
+                                </Button>
+
+                                {correctionsSummary && (
+                                    <div className={cn(
+                                        "text-xs px-3 py-2 rounded-lg text-center",
+                                        correctionsSummary.corrected > 0
+                                            ? "bg-amber-500/10 text-amber-400"
+                                            : "bg-success/10 text-success"
+                                    )}>
+                                        {correctionsSummary.corrected > 0
+                                            ? `${correctionsSummary.corrected} of ${correctionsSummary.total} timecodes corrected`
+                                            : `All ${correctionsSummary.total} timecodes verified ✓`}
+                                    </div>
+                                )}
+
+                                {verifyError && (
+                                    <div className="text-xs px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-center">
+                                        {verifyError}
+                                    </div>
+                                )}
+
                                 <Button
                                     variant="outline"
                                     className="w-full"
                                     onClick={startAnalysis}
+                                    disabled={isVerifying}
                                 >
                                     Re-analyze Video
                                 </Button>

@@ -201,6 +201,43 @@ export async function analyzeScenes(
     }>('analyze-scenes-3-task-gem3Flash', { videoUrl, audioUrl, videoDuration, hasAudio, scriptText, originalVideoUrl });
 }
 
+export async function verifySceneTimings(
+    videoUrl: string,
+    videoDuration: number,
+    scenes: {
+        startTime: number;
+        endTime: number;
+        narrativeStart: number;
+        narrativeEnd: number;
+        spokenText: string;
+        textOnScreen: string;
+    }[],
+    originalVideoUrl?: string,
+    hasAudio = true,
+) {
+    return callEdgeFunction<{
+        timecodes: number[];
+        hasVoiceover: boolean;
+        detectedLanguage: string;
+        detectedLanguageName: string;
+        scenes: {
+            startTime: number;
+            endTime: number;
+            narrativeStart: number;
+            narrativeEnd: number;
+            spokenText: string;
+            textOnScreen: string;
+        }[];
+        correctionsSummary: { total: number; corrected: number };
+    }>('verify-scene-timings', {
+        videoUrl,
+        videoDuration,
+        scenes,
+        originalVideoUrl,
+        hasAudio,
+    });
+}
+
 export async function matchScriptToScenes(
     videoUrl: string,
     videoDuration: number,

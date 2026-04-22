@@ -15,6 +15,15 @@ import {
     ScriptEntry,
 } from '@/types';
 
+export interface AnalyzedScene {
+    startTime: number;
+    endTime: number;
+    narrativeStart: number;
+    narrativeEnd: number;
+    spokenText: string;
+    textOnScreen: string;
+}
+
 interface AppState {
     // Session
     sessionId: string;
@@ -26,6 +35,15 @@ interface AppState {
     // Video
     video: VideoFile | null;
     setVideo: (video: VideoFile | null) => void;
+
+    // Supabase Storage URLs saved after AI analysis upload (for verify-scene-timings reuse)
+    analyzedVideoUrl: string | null;
+    setAnalyzedVideoUrl: (url: string | null) => void;
+    analyzedOriginalUrl: string | null;
+    setAnalyzedOriginalUrl: (url: string | null) => void;
+    // Full scene data from the last AI analysis (preserves narrative timings)
+    analyzedScenes: AnalyzedScene[] | null;
+    setAnalyzedScenes: (scenes: AnalyzedScene[] | null) => void;
 
     // Script
     script: ScriptFile | null;
@@ -134,6 +152,9 @@ const initialState = {
     sessionId: generateSessionId(),
     currentStep: 'upload' as AppStep,
     video: null,
+    analyzedVideoUrl: null as string | null,
+    analyzedOriginalUrl: null as string | null,
+    analyzedScenes: null as AnalyzedScene[] | null,
     script: null,
     scriptEntries: [] as ScriptEntry[],
     scriptAutoPopulated: false,
@@ -165,6 +186,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     setCurrentStep: (step) => set({ currentStep: step }),
 
     setVideo: (video) => set({ video }),
+
+    setAnalyzedVideoUrl: (url) => set({ analyzedVideoUrl: url }),
+    setAnalyzedOriginalUrl: (url) => set({ analyzedOriginalUrl: url }),
+    setAnalyzedScenes: (scenes) => set({ analyzedScenes: scenes }),
 
     setScript: (script) => set({ script }),
 

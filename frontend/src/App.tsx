@@ -38,7 +38,7 @@ import {
     ArrowRight, Plus, Trash2, Play, Pause, RotateCcw, Volume2, VolumeX,
     Scissors, GripVertical, Clock, FileText, X, BookOpen,
     SkipBack, SkipForward, CheckCircle2, AlertCircle, RefreshCw,
-    ChevronRight, Settings2, Pencil
+    ChevronRight, Settings2, Pencil, ShieldCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -1036,13 +1036,18 @@ function SceneTimeline({
 }
 
 function AnalyzeStepContent() {
-    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints, analyzedVideoUrl, setAnalyzedVideoUrl, analyzedOriginalUrl, setAnalyzedOriginalUrl, analyzedScenes, setAnalyzedScenes } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const [detectedVoiceover, setDetectedVoiceover] = useState<boolean | null>(null); // null = not analyzed yet
     const [previewingScene, setPreviewingScene] = useState<number | null>(null);
     const videoPreviewRef = useRef<HTMLVideoElement>(null);
+
+    // Verification state
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [correctionsSummary, setCorrectionsSummary] = useState<{ total: number; corrected: number } | null>(null);
+    const [verifyError, setVerifyError] = useState<string | null>(null);
     const wasPlayingBeforeScrub = useRef(false);
     const removedCutRef = useRef<number | null>(null);
     const analysisStartedRef = useRef(false);
@@ -1285,6 +1290,13 @@ function AnalyzeStepContent() {
             console.log("Silent video URL (as videoUrl):", videoUrl);
             console.log("Audio URL:", audioUrl);
             console.log("Original video URL:", originalVideoUrl);
+
+            // Retain for verify-scene-timings step (persisted in store across navigation)
+            setAnalyzedVideoUrl(videoUrl);
+            setAnalyzedOriginalUrl(originalVideoUrl);
+            setAnalyzedScenes(null); // will be set after analysis completes
+            setCorrectionsSummary(null);
+            setVerifyError(null);
             setProgress(30);
 
             if (script) {
@@ -1426,6 +1438,16 @@ function AnalyzeStepContent() {
                     setDetectedVoiceoverLanguage(null);
                 }
 
+                // Save full scene data to store so verify-scene-timings gets accurate narrative timings
+                setAnalyzedScenes(result.scenes.map((s: { startTime: number; endTime: number; narrativeStart?: number; narrativeEnd?: number; spokenText?: string; textOnScreen?: string }) => ({
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    narrativeStart: s.narrativeStart ?? s.startTime,
+                    narrativeEnd: s.narrativeEnd ?? s.endTime,
+                    spokenText: s.spokenText ?? '',
+                    textOnScreen: s.textOnScreen ?? '',
+                })));
+
                 // With audio: use narrativeEnd so cuts align with speech boundaries.
                 // Without audio: use visual endTime (no narrative to align to).
                 const aiCutPoints = result.scenes.slice(0, -1).map((s: { endTime: number; narrativeEnd?: number }) => {
@@ -1461,6 +1483,71 @@ function AnalyzeStepContent() {
         } finally {
             setIsAnalyzing(false);
             analysisStartedRef.current = false;
+        }
+    };
+
+    const handleVerifyTimings = async () => {
+        if (!video || !analyzedVideoUrl || !analyzedScenes || analyzedScenes.length === 0) return;
+
+        setIsVerifying(true);
+        setVerifyError(null);
+        setCorrectionsSummary(null);
+
+        try {
+            const { verifySceneTimings } = await import('@/lib/supabase');
+
+            // Use the stored scene data which preserves accurate narrative timings from the original analysis
+            const result = await verifySceneTimings(
+                analyzedVideoUrl,
+                video.duration,
+                analyzedScenes,
+                analyzedOriginalUrl ?? undefined,
+                videoHasAudio ?? true,
+            );
+
+            // Persist corrected scenes back to store so subsequent verify calls are accurate
+            setAnalyzedScenes(result.scenes.map((s: { startTime: number; endTime: number; narrativeStart?: number; narrativeEnd?: number; spokenText?: string; textOnScreen?: string }) => ({
+                startTime: s.startTime,
+                endTime: s.endTime,
+                narrativeStart: s.narrativeStart ?? s.startTime,
+                narrativeEnd: s.narrativeEnd ?? s.endTime,
+                spokenText: s.spokenText ?? '',
+                textOnScreen: s.textOnScreen ?? '',
+            })));
+
+            // Apply corrected cut points (derived from scene endTimes, excluding the last)
+            const correctedCuts = result.scenes
+                .slice(0, -1)
+                .map((s: { endTime: number; narrativeEnd?: number }) => {
+                    const t = (videoHasAudio && s.narrativeEnd && s.narrativeEnd > 0)
+                        ? s.narrativeEnd
+                        : s.endTime;
+                    return snapToFrame(t);
+                })
+                .sort((a: number, b: number) => a - b)
+                .filter((t: number, i: number, arr: number[]) => i === 0 || t !== arr[i - 1]);
+
+            setCutPoints(correctedCuts);
+
+            // Update script entries with corrected transcripts
+            const correctedEntries = result.scenes.map((scene: { spokenText?: string; textOnScreen?: string }, i: number) => ({
+                sceneIndex: i,
+                textOnScreen: scene.textOnScreen || scriptEntries[i]?.textOnScreen || '',
+                voiceover: scene.spokenText || '',
+                disclaimer: scriptEntries[i]?.disclaimer || '',
+                suggestedPosition: scriptEntries[i]?.suggestedPosition ?? ('top' as const),
+                suggestedFontSize: scriptEntries[i]?.suggestedFontSize ?? ('medium' as const),
+            }));
+            setScriptEntries(correctedEntries);
+
+            if (result.correctionsSummary) {
+                setCorrectionsSummary(result.correctionsSummary);
+            }
+        } catch (err) {
+            console.error('Verification failed:', err);
+            setVerifyError(err instanceof Error ? err.message : 'Failed to verify scene timings');
+        } finally {
+            setIsVerifying(false);
         }
     };
 
@@ -1583,16 +1670,54 @@ function AnalyzeStepContent() {
                                 <Progress value={progress} />
                             </div>
                         ) : (
-                            <>
-                                <Button onClick={startAnalysis} variant="outline" size="sm" className="flex-1">
-                                    <Scan className="w-4 h-4 mr-2" />
-                                    {script ? 'AI Auto-Detect with Script' : 'AI Auto-Detect'}
-                                </Button>
-                                <Button onClick={handleAddCutAtCurrentTime} variant="outline" size="sm" className="flex-1">
-                                    <Scissors className="w-4 h-4 mr-2" />
-                                    Cut at {formatTime(currentTime)}
-                                </Button>
-                            </>
+                            <div className="flex flex-col gap-2 w-full">
+                                <div className="flex gap-2">
+                                    <Button onClick={startAnalysis} variant="outline" size="sm" className="flex-1" disabled={isVerifying}>
+                                        <Scan className="w-4 h-4 mr-2" />
+                                        {script ? 'AI Auto-Detect with Script' : 'AI Auto-Detect'}
+                                    </Button>
+                                    <Button onClick={handleAddCutAtCurrentTime} variant="outline" size="sm" className="flex-1" disabled={isVerifying}>
+                                        <Scissors className="w-4 h-4 mr-2" />
+                                        Cut at {formatTime(currentTime)}
+                                    </Button>
+                                </div>
+                                {cutPoints.length > 0 && (
+                                    <div className="flex flex-col gap-1">
+                                        <Button
+                                            onClick={handleVerifyTimings}
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full"
+                                            disabled={isVerifying || !analyzedVideoUrl || !analyzedScenes}
+                                            title={!analyzedVideoUrl || !analyzedScenes ? 'Run AI Auto-Detect first to enable verification' : undefined}
+                                        >
+                                            {isVerifying ? (
+                                                <>
+                                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                    Verifying timecodes…
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <ShieldCheck className="w-4 h-4 mr-2" />
+                                                    Verify &amp; Fix Timings
+                                                </>
+                                            )}
+                                        </Button>
+                                        {correctionsSummary && (
+                                            <p className={`text-xs text-center px-2 py-1 rounded-md ${correctionsSummary.corrected > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-green-500/10 text-green-400'}`}>
+                                                {correctionsSummary.corrected > 0
+                                                    ? `${correctionsSummary.corrected} of ${correctionsSummary.total} timecodes corrected`
+                                                    : `All ${correctionsSummary.total} timecodes verified ✓`}
+                                            </p>
+                                        )}
+                                        {verifyError && (
+                                            <p className="text-xs text-center px-2 py-1 rounded-md bg-destructive/10 text-destructive">
+                                                {verifyError}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
