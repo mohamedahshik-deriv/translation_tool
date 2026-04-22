@@ -43,7 +43,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/store/app-store";
-import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
+import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, SUPPORTED_RESOLUTIONS, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
 
@@ -186,6 +186,7 @@ function UploadStepContent() {
     const [isScriptDragging, setIsScriptDragging] = useState(false);
     const [isParsingScript, setIsParsingScript] = useState(false);
     const [scriptError, setScriptError] = useState<string | null>(null);
+    const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
     const [dummyResolution, setDummyResolution] = useState<VideoResolution>('1080x1920');
 
     const handleDrop = async (e: React.DragEvent) => {
@@ -193,6 +194,7 @@ function UploadStepContent() {
         setIsDragging(false);
         const file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('video/')) {
+            setVideoUploadError(null);
             await processVideo(file);
         }
     };
@@ -200,6 +202,7 @@ function UploadStepContent() {
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
+            setVideoUploadError(null);
             await processVideo(file);
         }
     };
@@ -254,6 +257,18 @@ function UploadStepContent() {
         video.preload = 'metadata';
 
         video.onloadedmetadata = async () => {
+            const resolutionKey = `${video.videoWidth}x${video.videoHeight}`;
+            const isSupported = SUPPORTED_RESOLUTIONS.some(r => r.key === resolutionKey);
+            if (!isSupported) {
+                URL.revokeObjectURL(objectUrl);
+                setVideoUploadError(
+                    `Unsupported resolution ${video.videoWidth}×${video.videoHeight}. ` +
+                    `Please upload a video in one of the supported resolutions: ` +
+                    SUPPORTED_RESOLUTIONS.map(r => `${r.width}×${r.height}`).join(', ') + '.'
+                );
+                return;
+            }
+            setVideoUploadError(null);
             const frameRate = await detectFPS();
             const videoFile = {
                 id: `video-${Date.now()}`,
@@ -265,7 +280,7 @@ function UploadStepContent() {
                 width: video.videoWidth,
                 height: video.videoHeight,
                 frameRate,
-                resolution: `${video.videoWidth}x${video.videoHeight}` as any,
+                resolution: resolutionKey as VideoResolution,
             };
             setVideo(videoFile);
         };
@@ -398,7 +413,14 @@ function UploadStepContent() {
                         <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
                         <p className="font-medium mb-1">Drop your video here or click to browse</p>
                         <p className="text-sm text-muted-foreground">MP4, MOV, WebM • Max 50MB</p>
+                        <p className="text-sm text-muted-foreground">1080×1080 • 1080×1350 • 1080×1920 • 1920×1080</p>
                     </label>
+                </div>
+            )}
+            {videoUploadError && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                    <span className="mt-0.5 shrink-0">⚠</span>
+                    <span>{videoUploadError}</span>
                 </div>
             )}
 
