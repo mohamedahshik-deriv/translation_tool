@@ -4611,25 +4611,30 @@ function TranslateStepContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {SUPPORTED_LANGUAGES.map((lang) => {
                     const status = translateProgress[lang.code];
+                    const isSource = lang.code === textSrcLangCode;
                     return (
                         <button
                             key={lang.code}
-                            onClick={() => !isTranslating && toggleLanguage(lang.code)}
-                            disabled={isTranslating}
+                            onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
+                            disabled={isTranslating || isSource}
+                            title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                             className={cn(
                                 "flex items-center gap-2 p-3 rounded-lg border transition-all",
-                                selectedLanguages.includes(lang.code)
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border hover:border-muted-foreground/50",
-                                isTranslating && "opacity-60 cursor-not-allowed"
+                                isSource
+                                    ? "border-border bg-muted/40 text-muted-foreground cursor-not-allowed opacity-60"
+                                    : selectedLanguages.includes(lang.code)
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border hover:border-muted-foreground/50",
+                                isTranslating && !isSource && "opacity-60 cursor-not-allowed"
                             )}
                         >
                             <span className="text-lg">{lang.flag}</span>
                             <span className="text-sm font-medium">{lang.name}</span>
-                            {status === 'pending' && <Loader2 className="w-3.5 h-3.5 ml-auto animate-spin text-primary" />}
-                            {status === 'done' && <Check className="w-3.5 h-3.5 ml-auto text-success" />}
-                            {status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-400" />}
-                            {!status && selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />}
+                            {isSource && <span className="ml-auto text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Source</span>}
+                            {!isSource && status === 'pending' && <Loader2 className="w-3.5 h-3.5 ml-auto animate-spin text-primary" />}
+                            {!isSource && status === 'done' && <Check className="w-3.5 h-3.5 ml-auto text-success" />}
+                            {!isSource && status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-400" />}
+                            {!isSource && !status && selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />}
                         </button>
                     );
                 })}
@@ -4637,18 +4642,37 @@ function TranslateStepContent() {
 
             {/* Translate button */}
             {!translationsDone && (
-                <Button
-                    variant="gradient"
-                    className="w-full"
-                    onClick={startTranslation}
-                    disabled={isTranslating || selectedLanguages.length === 0 || allLayers.length === 0}
-                >
-                    {isTranslating ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
-                    ) : (
-                        <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
-                    )}
-                </Button>
+                allLayers.length === 0 ? (
+                    <div className="space-y-3">
+                        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800">
+                            <svg className="mt-0.5 w-4 h-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+                            </svg>
+                            <span>No text overlays found. Select your target languages above, then skip to voiceover translation — your selection carries over to the next step.</span>
+                        </div>
+                        <Button
+                            variant="gradient"
+                            className="w-full"
+                            onClick={() => setCurrentStep('translate-voiceover')}
+                            disabled={selectedLanguages.length === 0}
+                        >
+                            Skip to Voiceover Translation <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        variant="gradient"
+                        className="w-full"
+                        onClick={startTranslation}
+                        disabled={isTranslating || selectedLanguages.length === 0}
+                    >
+                        {isTranslating ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
+                        ) : (
+                            <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
+                        )}
+                    </Button>
+                )
             )}
 
             {/* Live preview — shown after translation */}
@@ -4951,26 +4975,33 @@ function TranslateVoiceoverStepContent() {
                 <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Select target languages for translation:</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {SUPPORTED_LANGUAGES.map((lang) => (
-                            <button
-                                key={lang.code}
-                                onClick={() => !isTranslating && toggleLanguage(lang.code)}
-                                disabled={isTranslating}
-                                className={cn(
-                                    "flex items-center gap-2 p-3 rounded-lg border transition-all",
-                                    selectedLanguages.includes(lang.code)
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border hover:border-muted-foreground/50",
-                                    isTranslating && "opacity-60 cursor-not-allowed"
-                                )}
-                            >
-                                <span className="text-lg">{lang.flag}</span>
-                                <span className="text-sm font-medium">{lang.name}</span>
-                                {selectedLanguages.includes(lang.code) && (
-                                    <Check className="w-4 h-4 ml-auto" />
-                                )}
-                            </button>
-                        ))}
+                        {SUPPORTED_LANGUAGES.map((lang) => {
+                            const isSource = lang.code === sourceLangCode;
+                            return (
+                                <button
+                                    key={lang.code}
+                                    onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
+                                    disabled={isTranslating || isSource}
+                                    title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
+                                    className={cn(
+                                        "flex items-center gap-2 p-3 rounded-lg border transition-all",
+                                        isSource
+                                            ? "border-border bg-muted/40 text-muted-foreground cursor-not-allowed opacity-60"
+                                            : selectedLanguages.includes(lang.code)
+                                                ? "border-primary bg-primary/10 text-primary"
+                                                : "border-border hover:border-muted-foreground/50",
+                                        isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                    )}
+                                >
+                                    <span className="text-lg">{lang.flag}</span>
+                                    <span className="text-sm font-medium">{lang.name}</span>
+                                    {isSource
+                                        ? <span className="ml-auto text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Source</span>
+                                        : selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />
+                                    }
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             )}
