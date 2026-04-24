@@ -112,7 +112,7 @@ export const SAFE_ZONES: Record<VideoResolution, SafeZoneConfig> = {
     '1920x1080': {
         marginTop:           64,
         contentTop:          192,
-        contentTopWidth:     300,
+        contentTopWidth:     1920,
         marginBottom:        64,
         marginLeft:          64,
         marginRight:         64,
@@ -219,8 +219,8 @@ export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPos
     },
     '1920x1080': {
         TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block
-        TC: { x: 960,  y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
-        TR: { x: 1856, y: 64,   anchor: 'top'    }, // outside content-top block, sits at top margin
+        TC: { x: 960,  y: 192,  anchor: 'top'    }, // below full-width 192px content-top block
+        TR: { x: 1856, y: 192,  anchor: 'top'    }, // below full-width 192px content-top block
         ML: { x: 64,   y: 540,  anchor: 'middle' },
         MC: { x: 960,  y: 540,  anchor: 'middle' },
         MR: { x: 1856, y: 540,  anchor: 'middle' },
