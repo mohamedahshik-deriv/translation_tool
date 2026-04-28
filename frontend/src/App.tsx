@@ -2042,7 +2042,7 @@ type ExportOverlayLayer = {
     textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta';
 };
 
-type RichToken = { text: string; color: string };
+type RichToken = { text: string; color: string; newline?: boolean };
 type OverlayRenderResult = { blob: Blob | null; resolvedFontSize: number | null };
 type OverlayCacheEntry = { blob: Blob; resolvedFontSize: number | null };
 
@@ -2070,8 +2070,15 @@ function getHorizontalBounds(positionX: number, videoWidth: number): { left: num
 function tokenizeRichParts(content: string, defaultColor: string): RichToken[] {
     const tokens: RichToken[] = [];
     for (const part of parseRichText(content, defaultColor)) {
-        const pieces = part.text.split(/(\s+)/).filter((p) => p.length > 0);
-        for (const piece of pieces) tokens.push({ text: piece, color: part.color });
+        const normalized = part.text.replace(/\r\n?/g, '\n');
+        const lines = normalized.split('\n');
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+            if (lineIndex > 0) {
+                tokens.push({ text: '', color: part.color, newline: true });
+            }
+            const pieces = lines[lineIndex].split(/([ \t]+)/).filter((p) => p.length > 0);
+            for (const piece of pieces) tokens.push({ text: piece, color: part.color });
+        }
     }
     return tokens;
 }
@@ -2089,14 +2096,20 @@ function wrapRichTokens(
     const lineText = (line: RichToken[]) => line.map((t) => t.text).join('');
 
     for (const token of tokens) {
-        const isSpace = /^\s+$/.test(token.text);
-        if (isSpace && current.length === 0) continue;
+        if (token.newline) {
+            lines.push(current);
+            if (lines.length >= effectiveMaxLines) return lines;
+            current = [];
+            continue;
+        }
+
+        const isSpace = /^[ \t]+$/.test(token.text);
 
         const candidate = lineText(current) + token.text;
         if (!isSpace && current.length > 0 && ctx.measureText(candidate).width > safeMaxWidth) {
             lines.push(current);
             if (lines.length >= effectiveMaxLines) return lines;
-            current = [{ ...token, text: token.text.replace(/^\s+/, '') }];
+            current = [{ ...token }];
             continue;
         }
         current.push(token);
@@ -2393,7 +2406,7 @@ function AutoFitText({
             'visibility:hidden',
             'pointer-events:none',
             `width:${width}px`,
-            'white-space:normal',
+            'white-space:break-spaces',
             'word-break:break-word',
             `font-weight:${fontWeight}`,
             `font-family:${fontFamily}`,
@@ -2462,6 +2475,7 @@ function AutoFitText({
                     width: '100%',
                     textAlign: textAlign,
                     wordBreak: 'break-word' as const,
+                    whiteSpace: 'break-spaces' as const,
                     verticalAlign: 'top',
                     ...(noClamp ? {
                         // Show all lines — no truncation
@@ -2529,7 +2543,7 @@ function DisclaimerAutoFont({
             'visibility:hidden',
             'pointer-events:none',
             `width:${nativeSafeWidth}px`,
-            'white-space:normal',
+            'white-space:break-spaces',
             'word-break:break-word',
             `font-family:${fontFamily}`,
             'font-weight:400',
@@ -2565,6 +2579,7 @@ function DisclaimerAutoFont({
                     width: '100%',
                     textAlign,
                     wordBreak: 'break-word' as const,
+                    whiteSpace: 'break-spaces' as const,
                     display: 'block',
                     overflow: 'visible',
                     lineHeight: 1.4,
@@ -3197,7 +3212,7 @@ function SceneVideoPlayer({
                                                     color: layer.color,
                                                     textAlign: textAlign,
                                                     wordBreak: 'break-word',
-                                                    whiteSpace: 'normal',
+                                                    whiteSpace: 'break-spaces',
                                                     display: 'block',
                                                     overflow: 'visible',
                                                     transform: 'scale(0.5)',
