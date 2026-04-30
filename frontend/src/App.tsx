@@ -2215,9 +2215,15 @@ async function renderLayerOverlayToPng(
         }
 
         const byStyle = layer.textStyle === 'headline'
-            ? { min: 64, max: 128 }
+            ? {
+                min: 64,
+                max: Math.max(64, Math.round(layer.fontSize || 128)),
+            }
             : layer.textStyle === 'body'
-                ? { min: 24, max: 32 }
+                ? {
+                    min: 24,
+                    max: Math.max(24, Math.round(layer.fontSize || 32)),
+                }
                 : layer.textStyle === 'cta'
                     ? { min: 56, max: 72 }
                     : { min: Math.max(8, Math.round(layer.fontSize || 24)), max: Math.max(8, Math.round(layer.fontSize || 24)) };
@@ -3229,11 +3235,27 @@ function SceneVideoPlayer({
                                             content={layer.content}
                                             defaultColor={layer.color}
                                             maxFontSize={Math.max(12, Math.round(
-                                                (layer.textStyle === 'headline' ? 128 : layer.textStyle === 'body' ? 32 : layer.textStyle === 'cta' ? 72 : layer.fontSize)
+                                                (
+                                                    layer.textStyle === 'headline'
+                                                        ? Math.max(64, Math.round(layer.fontSize || 128))
+                                                        : layer.textStyle === 'body'
+                                                            ? Math.max(24, Math.round(layer.fontSize || 32))
+                                                            : layer.textStyle === 'cta'
+                                                                ? 72
+                                                                : layer.fontSize
+                                                )
                                                 * (previewShortSide / 1080)
                                             ))}
                                             minFontSize={Math.max(6, Math.round(
-                                                (layer.textStyle === 'headline' ? 64 : layer.textStyle === 'body' ? 24 : layer.textStyle === 'cta' ? 56 : 10)
+                                                (
+                                                    layer.textStyle === 'headline'
+                                                        ? 64
+                                                        : layer.textStyle === 'body'
+                                                            ? 24
+                                                            : layer.textStyle === 'cta'
+                                                                ? 56
+                                                                : 10
+                                                )
                                                 * (previewShortSide / 1080)
                                             ))}
                                             lineHeight={1}
@@ -4009,6 +4031,14 @@ function EditTextStepContent() {
                                     const effectiveStyle = layer.textStyle ?? 'headline';
                                     const headlineSizes = [64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128];
                                     const bodySizes = [24, 28, 32];
+                                    const presetSizes = effectiveStyle === 'headline'
+                                        ? { max: 128, medium: 96, min: 64 }
+                                        : { max: 32, medium: 28, min: 24 };
+                                    const activePreset = layer.fontSize === presetSizes.medium
+                                        ? 'medium'
+                                        : layer.fontSize === presetSizes.min
+                                            ? 'min'
+                                            : 'max';
                                     return (
                                         <>
                                             <div className="space-y-1.5">
@@ -4066,6 +4096,33 @@ function EditTextStepContent() {
                                                 </p>
                                             </div>
 
+                                            {/* Size Presets */}
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Size Preset</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {[
+                                                        { key: 'max', label: 'Maximum', size: presetSizes.max },
+                                                        { key: 'medium', label: 'Medium', size: presetSizes.medium },
+                                                        { key: 'min', label: 'Minimum', size: presetSizes.min },
+                                                    ].map((preset) => (
+                                                        <button
+                                                            key={preset.key}
+                                                            type="button"
+                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, { fontSize: preset.size })}
+                                                            className={cn(
+                                                                "px-2 py-2 rounded-lg border text-left transition-all",
+                                                                activePreset === preset.key
+                                                                    ? "border-primary bg-primary/10"
+                                                                    : "border-border hover:border-muted-foreground"
+                                                            )}
+                                                        >
+                                                            <div className="text-[11px] font-medium leading-none">{preset.label}</div>
+                                                            <div className="text-[10px] text-muted-foreground mt-1 leading-none">{preset.size}px</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
                                             {/* Style controls row */}
                                             <div className="grid grid-cols-3 gap-2">
                                                 {/* Font size — auto-fit display when textStyle set, manual dropdown otherwise */}
@@ -4074,7 +4131,11 @@ function EditTextStepContent() {
                                                     {layer.textStyle ? (
                                                         <div
                                                             className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
-                                                            title={`Auto-fit: ${effectiveStyle === 'headline' ? '64–128' : '24–32'}px range`}
+                                                            title={`Auto-fit: ${
+                                                                effectiveStyle === 'headline'
+                                                                    ? `64–${Math.max(64, Math.round(layer.fontSize || 128))}`
+                                                                    : `24–${Math.max(24, Math.round(layer.fontSize || 32))}`
+                                                            }px range`}
                                                         >
                                                             {layer.fontSize}px <span className="text-[9px] opacity-60">auto</span>
                                                         </div>
