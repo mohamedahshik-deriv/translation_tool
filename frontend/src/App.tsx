@@ -2154,7 +2154,7 @@ type ExportOverlayLayer = {
     textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta';
 };
 
-type RichToken = { text: string; color: string };
+type RichToken = { text: string; color: string; newline?: boolean };
 type OverlayRenderResult = { blob: Blob | null; resolvedFontSize: number | null };
 type OverlayCacheEntry = { blob: Blob; resolvedFontSize: number | null };
 
@@ -2182,8 +2182,15 @@ function getHorizontalBounds(positionX: number, videoWidth: number): { left: num
 function tokenizeRichParts(content: string, defaultColor: string): RichToken[] {
     const tokens: RichToken[] = [];
     for (const part of parseRichText(content, defaultColor)) {
-        const pieces = part.text.split(/(\s+)/).filter((p) => p.length > 0);
-        for (const piece of pieces) tokens.push({ text: piece, color: part.color });
+        const normalized = part.text.replace(/\r\n?/g, '\n');
+        const lines = normalized.split('\n');
+        for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+            if (lineIndex > 0) {
+                tokens.push({ text: '', color: part.color, newline: true });
+            }
+            const pieces = lines[lineIndex].split(/([ \t]+)/).filter((p) => p.length > 0);
+            for (const piece of pieces) tokens.push({ text: piece, color: part.color });
+        }
     }
     return tokens;
 }
@@ -2201,14 +2208,20 @@ function wrapRichTokens(
     const lineText = (line: RichToken[]) => line.map((t) => t.text).join('');
 
     for (const token of tokens) {
-        const isSpace = /^\s+$/.test(token.text);
-        if (isSpace && current.length === 0) continue;
+        if (token.newline) {
+            lines.push(current);
+            if (lines.length >= effectiveMaxLines) return lines;
+            current = [];
+            continue;
+        }
+
+        const isSpace = /^[ \t]+$/.test(token.text);
 
         const candidate = lineText(current) + token.text;
         if (!isSpace && current.length > 0 && ctx.measureText(candidate).width > safeMaxWidth) {
             lines.push(current);
             if (lines.length >= effectiveMaxLines) return lines;
-            current = [{ ...token, text: token.text.replace(/^\s+/, '') }];
+            current = [{ ...token }];
             continue;
         }
         current.push(token);
@@ -2314,9 +2327,15 @@ async function renderLayerOverlayToPng(
         }
 
         const byStyle = layer.textStyle === 'headline'
-            ? { min: 64, max: 128 }
+            ? {
+                min: 64,
+                max: Math.max(64, Math.round(layer.fontSize || 128)),
+            }
             : layer.textStyle === 'body'
-                ? { min: 24, max: 32 }
+                ? {
+                    min: 24,
+                    max: Math.max(24, Math.round(layer.fontSize || 32)),
+                }
                 : layer.textStyle === 'cta'
                     ? { min: 56, max: 72 }
                     : { min: Math.max(8, Math.round(layer.fontSize || 24)), max: Math.max(8, Math.round(layer.fontSize || 24)) };
@@ -2505,7 +2524,7 @@ function AutoFitText({
             'visibility:hidden',
             'pointer-events:none',
             `width:${width}px`,
-            'white-space:normal',
+            'white-space:break-spaces',
             'word-break:break-word',
             `font-weight:${fontWeight}`,
             `font-family:${fontFamily}`,
@@ -2574,6 +2593,7 @@ function AutoFitText({
                     width: '100%',
                     textAlign: textAlign,
                     wordBreak: 'break-word' as const,
+                    whiteSpace: 'break-spaces' as const,
                     verticalAlign: 'top',
                     ...(noClamp ? {
                         // Show all lines — no truncation
@@ -2641,7 +2661,7 @@ function DisclaimerAutoFont({
             'visibility:hidden',
             'pointer-events:none',
             `width:${nativeSafeWidth}px`,
-            'white-space:normal',
+            'white-space:break-spaces',
             'word-break:break-word',
             `font-family:${fontFamily}`,
             'font-weight:400',
@@ -2677,6 +2697,7 @@ function DisclaimerAutoFont({
                     width: '100%',
                     textAlign,
                     wordBreak: 'break-word' as const,
+                    whiteSpace: 'break-spaces' as const,
                     display: 'block',
                     overflow: 'visible',
                     lineHeight: 1.4,
@@ -3379,7 +3400,7 @@ function SceneVideoPlayer({
                                                     color: layer.color,
                                                     textAlign: textAlign,
                                                     wordBreak: 'break-word',
-                                                    whiteSpace: 'normal',
+                                                    whiteSpace: 'break-spaces',
                                                     display: 'block',
                                                     overflow: 'visible',
                                                     transform: 'scale(0.5)',
@@ -3396,11 +3417,27 @@ function SceneVideoPlayer({
                                             content={layer.content}
                                             defaultColor={layer.color}
                                             maxFontSize={Math.max(12, Math.round(
-                                                (layer.textStyle === 'headline' ? 128 : layer.textStyle === 'body' ? 32 : layer.textStyle === 'cta' ? 72 : layer.fontSize)
+                                                (
+                                                    layer.textStyle === 'headline'
+                                                        ? Math.max(64, Math.round(layer.fontSize || 128))
+                                                        : layer.textStyle === 'body'
+                                                            ? Math.max(24, Math.round(layer.fontSize || 32))
+                                                            : layer.textStyle === 'cta'
+                                                                ? 72
+                                                                : layer.fontSize
+                                                )
                                                 * (previewShortSide / 1080)
                                             ))}
                                             minFontSize={Math.max(6, Math.round(
-                                                (layer.textStyle === 'headline' ? 64 : layer.textStyle === 'body' ? 24 : layer.textStyle === 'cta' ? 56 : 10)
+                                                (
+                                                    layer.textStyle === 'headline'
+                                                        ? 64
+                                                        : layer.textStyle === 'body'
+                                                            ? 24
+                                                            : layer.textStyle === 'cta'
+                                                                ? 56
+                                                                : 10
+                                                )
                                                 * (previewShortSide / 1080)
                                             ))}
                                             lineHeight={1}
@@ -4219,6 +4256,14 @@ function EditTextStepContent() {
                                     const effectiveStyle = layer.textStyle ?? 'headline';
                                     const headlineSizes = [64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128];
                                     const bodySizes = [24, 28, 32];
+                                    const presetSizes = effectiveStyle === 'headline'
+                                        ? { max: 128, medium: 96, min: 64 }
+                                        : { max: 32, medium: 28, min: 24 };
+                                    const activePreset = layer.fontSize === presetSizes.medium
+                                        ? 'medium'
+                                        : layer.fontSize === presetSizes.min
+                                            ? 'min'
+                                            : 'max';
                                     return (
                                         <>
                                             <div className="space-y-1.5">
@@ -4276,6 +4321,33 @@ function EditTextStepContent() {
                                                 </p>
                                             </div>
 
+                                            {/* Size Presets */}
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Size Preset</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {[
+                                                        { key: 'max', label: 'Maximum', size: presetSizes.max },
+                                                        { key: 'medium', label: 'Medium', size: presetSizes.medium },
+                                                        { key: 'min', label: 'Minimum', size: presetSizes.min },
+                                                    ].map((preset) => (
+                                                        <button
+                                                            key={preset.key}
+                                                            type="button"
+                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, { fontSize: preset.size })}
+                                                            className={cn(
+                                                                "px-2 py-2 rounded-lg border text-left transition-all",
+                                                                activePreset === preset.key
+                                                                    ? "border-primary bg-primary/10"
+                                                                    : "border-border hover:border-muted-foreground"
+                                                            )}
+                                                        >
+                                                            <div className="text-[11px] font-medium leading-none">{preset.label}</div>
+                                                            <div className="text-[10px] text-muted-foreground mt-1 leading-none">{preset.size}px</div>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
                                             {/* Style controls row */}
                                             <div className="grid grid-cols-3 gap-2">
                                                 {/* Font size — auto-fit display when textStyle set, manual dropdown otherwise */}
@@ -4284,7 +4356,11 @@ function EditTextStepContent() {
                                                     {layer.textStyle ? (
                                                         <div
                                                             className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
-                                                            title={`Auto-fit: ${effectiveStyle === 'headline' ? '64–128' : '24–32'}px range`}
+                                                            title={`Auto-fit: ${
+                                                                effectiveStyle === 'headline'
+                                                                    ? `64–${Math.max(64, Math.round(layer.fontSize || 128))}`
+                                                                    : `24–${Math.max(24, Math.round(layer.fontSize || 32))}`
+                                                            }px range`}
                                                         >
                                                             {layer.fontSize}px <span className="text-[9px] opacity-60">auto</span>
                                                         </div>
@@ -4836,25 +4912,30 @@ function TranslateStepContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {SUPPORTED_LANGUAGES.map((lang) => {
                     const status = translateProgress[lang.code];
+                    const isSource = lang.code === textSrcLangCode;
                     return (
                         <button
                             key={lang.code}
-                            onClick={() => !isTranslating && toggleLanguage(lang.code)}
-                            disabled={isTranslating}
+                            onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
+                            disabled={isTranslating || isSource}
+                            title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                             className={cn(
                                 "flex items-center gap-2 p-3 rounded-lg border transition-all",
-                                selectedLanguages.includes(lang.code)
-                                    ? "border-primary bg-primary/10 text-primary"
-                                    : "border-border hover:border-muted-foreground/50",
-                                isTranslating && "opacity-60 cursor-not-allowed"
+                                isSource
+                                    ? "border-border bg-muted/40 text-muted-foreground cursor-not-allowed opacity-60"
+                                    : selectedLanguages.includes(lang.code)
+                                        ? "border-primary bg-primary/10 text-primary"
+                                        : "border-border hover:border-muted-foreground/50",
+                                isTranslating && !isSource && "opacity-60 cursor-not-allowed"
                             )}
                         >
                             <span className="text-lg">{lang.flag}</span>
                             <span className="text-sm font-medium">{lang.name}</span>
-                            {status === 'pending' && <Loader2 className="w-3.5 h-3.5 ml-auto animate-spin text-primary" />}
-                            {status === 'done' && <Check className="w-3.5 h-3.5 ml-auto text-success" />}
-                            {status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-600" />}
-                            {!status && selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />}
+                            {isSource && <span className="ml-auto text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Source</span>}
+                            {!isSource && status === 'pending' && <Loader2 className="w-3.5 h-3.5 ml-auto animate-spin text-primary" />}
+                            {!isSource && status === 'done' && <Check className="w-3.5 h-3.5 ml-auto text-success" />}
+                            {!isSource && status === 'error' && <X className="w-3.5 h-3.5 ml-auto text-red-400" />}
+                            {!isSource && !status && selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />}
                         </button>
                     );
                 })}
@@ -4862,18 +4943,37 @@ function TranslateStepContent() {
 
             {/* Translate button */}
             {!translationsDone && (
-                <Button
-                    variant="gradient"
-                    className="w-full"
-                    onClick={startTranslation}
-                    disabled={isTranslating || selectedLanguages.length === 0 || allLayers.length === 0}
-                >
-                    {isTranslating ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
-                    ) : (
-                        <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
-                    )}
-                </Button>
+                allLayers.length === 0 ? (
+                    <div className="space-y-3">
+                        <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-800">
+                            <svg className="mt-0.5 w-4 h-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+                            </svg>
+                            <span>No text overlays found. Select your target languages above, then skip to voiceover translation — your selection carries over to the next step.</span>
+                        </div>
+                        <Button
+                            variant="gradient"
+                            className="w-full"
+                            onClick={() => setCurrentStep('translate-voiceover')}
+                            disabled={selectedLanguages.length === 0}
+                        >
+                            Skip to Voiceover Translation <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        variant="gradient"
+                        className="w-full"
+                        onClick={startTranslation}
+                        disabled={isTranslating || selectedLanguages.length === 0}
+                    >
+                        {isTranslating ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
+                        ) : (
+                            <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
+                        )}
+                    </Button>
+                )
             )}
 
             {/* Live preview — shown after translation */}
@@ -5176,26 +5276,33 @@ function TranslateVoiceoverStepContent() {
                 <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Select target languages for translation:</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {SUPPORTED_LANGUAGES.map((lang) => (
-                            <button
-                                key={lang.code}
-                                onClick={() => !isTranslating && toggleLanguage(lang.code)}
-                                disabled={isTranslating}
-                                className={cn(
-                                    "flex items-center gap-2 p-3 rounded-lg border transition-all",
-                                    selectedLanguages.includes(lang.code)
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border hover:border-muted-foreground/50",
-                                    isTranslating && "opacity-60 cursor-not-allowed"
-                                )}
-                            >
-                                <span className="text-lg">{lang.flag}</span>
-                                <span className="text-sm font-medium">{lang.name}</span>
-                                {selectedLanguages.includes(lang.code) && (
-                                    <Check className="w-4 h-4 ml-auto" />
-                                )}
-                            </button>
-                        ))}
+                        {SUPPORTED_LANGUAGES.map((lang) => {
+                            const isSource = lang.code === sourceLangCode;
+                            return (
+                                <button
+                                    key={lang.code}
+                                    onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
+                                    disabled={isTranslating || isSource}
+                                    title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
+                                    className={cn(
+                                        "flex items-center gap-2 p-3 rounded-lg border transition-all",
+                                        isSource
+                                            ? "border-border bg-muted/40 text-muted-foreground cursor-not-allowed opacity-60"
+                                            : selectedLanguages.includes(lang.code)
+                                                ? "border-primary bg-primary/10 text-primary"
+                                                : "border-border hover:border-muted-foreground/50",
+                                        isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                    )}
+                                >
+                                    <span className="text-lg">{lang.flag}</span>
+                                    <span className="text-sm font-medium">{lang.name}</span>
+                                    {isSource
+                                        ? <span className="ml-auto text-[10px] font-medium bg-muted text-muted-foreground px-1.5 py-0.5 rounded">Source</span>
+                                        : selectedLanguages.includes(lang.code) && <Check className="w-4 h-4 ml-auto" />
+                                    }
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             )}
