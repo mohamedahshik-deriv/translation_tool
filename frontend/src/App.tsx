@@ -6925,6 +6925,11 @@ export default function Home() {
     ];
     const activeStep = stepConfigs.find((step) => step.id === currentStep) ?? stepConfigs[0];
     const activeStatus = getStepStatus(activeStep.id);
+
+    // Direction-aware slide: positive = going forward, negative = going back
+    const prevIndexRef = useRef(currentIndex);
+    const direction = currentIndex >= prevIndexRef.current ? 1 : -1;
+    useEffect(() => { prevIndexRef.current = currentIndex; }, [currentIndex]);
     const totalSteps = stepConfigs.length;
     const currentStepNumber = Math.max(currentIndex + 1, 1);
     const completedSteps = stepConfigs.filter((step) => getStepStatus(step.id).isCompleted).length;
@@ -6983,7 +6988,7 @@ export default function Home() {
                                             isLocked && "opacity-60 cursor-not-allowed",
                                         )}
                                     >
-                                        <div
+                                        <motion.div
                                             className={cn(
                                                 "w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0",
                                                 isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-sm",
@@ -6991,15 +6996,25 @@ export default function Home() {
                                                 isLocked && "bg-white/50 text-muted-foreground border border-white/60",
                                                 !isActive && !isCompleted && !isLocked && "bg-white/50 text-foreground border border-white/60",
                                             )}
+                                            animate={isCompleted ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                                            transition={{ duration: 0.35, ease: "easeOut" }}
                                         >
-                                            {isProcessing ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            ) : isCompleted ? (
-                                                <Check className="w-3.5 h-3.5" />
-                                            ) : (
-                                                index + 1
-                                            )}
-                                        </div>
+                                            <AnimatePresence mode="wait" initial={false}>
+                                                {isProcessing ? (
+                                                    <motion.span key="processing" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    </motion.span>
+                                                ) : isCompleted ? (
+                                                    <motion.span key="check" initial={{ opacity: 0, scale: 0.5, rotate: -30 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.25, ease: "backOut" }}>
+                                                        <Check className="w-3.5 h-3.5" />
+                                                    </motion.span>
+                                                ) : (
+                                                    <motion.span key={`num-${index}`} initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                                                        {index + 1}
+                                                    </motion.span>
+                                                )}
+                                            </AnimatePresence>
+                                        </motion.div>
 
                                         <div className="min-w-0">
                                             <p className="text-sm font-medium truncate">{step.title}</p>
@@ -7013,7 +7028,7 @@ export default function Home() {
                         </div>
                     </aside>
 
-                    <section>
+                    <section className="overflow-hidden">
                         <StepSection
                             stepId={activeStep.id}
                             title={activeStep.title}
@@ -7026,7 +7041,23 @@ export default function Home() {
                             isProcessing={activeStatus.isProcessing}
                             onToggle={() => {}}
                         >
-                            {activeStep.content}
+                            <AnimatePresence mode="wait" initial={false} custom={direction}>
+                                <motion.div
+                                    key={activeStep.id}
+                                    custom={direction}
+                                    variants={{
+                                        enter: (d: number) => ({ opacity: 0, x: d * 24 }),
+                                        center: { opacity: 1, x: 0 },
+                                        exit: (d: number) => ({ opacity: 0, x: d * -24 }),
+                                    }}
+                                    initial="enter"
+                                    animate="center"
+                                    exit="exit"
+                                    transition={{ duration: 0.22, ease: "easeOut" }}
+                                >
+                                    {activeStep.content}
+                                </motion.div>
+                            </AnimatePresence>
                         </StepSection>
                     </section>
                 </div>
