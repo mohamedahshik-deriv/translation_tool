@@ -188,6 +188,7 @@ function UploadStepContent() {
     const [scriptError, setScriptError] = useState<string | null>(null);
     const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
     const [dummyResolution, setDummyResolution] = useState<VideoResolution>('1080x1920');
+    const isDev = import.meta.env.DEV;
 
     const handleDrop = async (e: React.DragEvent) => {
         e.preventDefault();
@@ -397,6 +398,8 @@ function UploadStepContent() {
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
+                    role="region"
+                    aria-label="Video upload area"
                     className={cn(
                         "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
                         isDragging ? "border-primary/70 bg-primary/5 shadow-inner" : "border-white/60 bg-white/30 hover:bg-white/45"
@@ -408,14 +411,19 @@ function UploadStepContent() {
                         onChange={handleFileSelect}
                         className="hidden"
                         id="video-upload"
+                        aria-label="Upload video file"
                     />
-                    <label htmlFor="video-upload" className="cursor-pointer">
+                    <label htmlFor="video-upload" className="cursor-pointer block">
                         <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-cyan-400 via-blue-500 to-fuchsia-500 shadow-lg shadow-blue-300/40 mx-auto mb-4">
                             <Upload className="w-8 h-8 text-white" />
                         </div>
-                        <p className="font-medium mb-1">Drop your video here or click to browse</p>
-                        <p className="text-sm text-muted-foreground">MP4, MOV, WebM • Max 50MB</p>
-                        <p className="text-sm text-muted-foreground">1080×1080 • 1080×1350 • 1080×1920 • 1920×1080</p>
+                        <p className="font-medium mb-1">
+                            {isDragging ? "Release to upload your video" : "Drop your video here"}
+                        </p>
+                        <p className="text-sm text-muted-foreground mb-3">MP4, MOV, WebM - Max 50MB</p>
+                        <span className="inline-flex items-center rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+                            Browse files
+                        </span>
                     </label>
                 </div>
             )}
@@ -426,10 +434,21 @@ function UploadStepContent() {
                 </div>
             )}
 
-            {/* Dev shortcut — skip upload & analysis */}
             {!video && (
-                <div className="rounded-xl border border-dashed border-white/60 bg-white/30 p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground text-center font-medium">Use Dummy Data (Dev)</p>
+                <details className="rounded-xl border border-white/60 bg-white/30 p-3">
+                    <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                        Supported resolutions
+                    </summary>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        1080x1080, 1080x1350, 1080x1920, 1920x1080
+                    </p>
+                </details>
+            )}
+
+            {/* Dev shortcut — skip upload & analysis */}
+            {!video && isDev && (
+                <div className="rounded-xl border border-dashed border-white/60 bg-white/20 p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground text-center font-medium">Development only</p>
                     <div className="grid grid-cols-4 gap-1.5">
                         {(['1080x1080', '1080x1350', '1080x1920', '1920x1080'] as VideoResolution[]).map((res) => (
                             <button
@@ -450,9 +469,9 @@ function UploadStepContent() {
                     <button
                         type="button"
                         onClick={handleUseDummyData}
-                        className="w-full text-xs text-primary border border-primary/40 rounded-md px-4 py-2 hover:bg-primary/10 bg-white/40 transition-colors"
+                        className="w-full text-xs text-muted-foreground border border-white/70 rounded-md px-4 py-2 hover:text-primary hover:border-primary/40 hover:bg-primary/10 bg-white/30 transition-colors"
                     >
-                        Load Dummy Data →
+                        Use dummy data
                     </button>
                 </div>
             )}
@@ -505,6 +524,7 @@ function UploadStepContent() {
                             className="hidden"
                             id="script-upload"
                             disabled={isParsingScript}
+                            aria-label="Upload script file"
                         />
                         <label htmlFor="script-upload" className="cursor-pointer">
                             {isParsingScript ? (
@@ -515,8 +535,10 @@ function UploadStepContent() {
                             ) : (
                                 <>
                                     <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                                    <p className="text-sm font-medium mb-1">Drop your script here or click to browse</p>
-                                    <p className="text-xs text-muted-foreground">TXT, PDF, DOCX supported</p>
+                                    <p className="text-sm font-medium mb-1">
+                                        {isScriptDragging ? "Release to upload your script" : "Drop your script here or click to browse"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">TXT, PDF, DOCX supported - paste-ready after extraction</p>
                                 </>
                             )}
                         </label>
@@ -533,17 +555,21 @@ function UploadStepContent() {
 
             {/* Continue button — only show when video is uploaded */}
             {video && (
-                <Button
-                    variant="gradient"
-                    className="w-full"
-                    onClick={() => {
-                        setShouldAutoAnalyze(true);
-                        setCurrentStep('analyze');
-                    }}
-                >
-                    {script ? 'Continue with Video & Script' : 'Continue with Video'}
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <div className="sticky bottom-4 z-20 pt-2">
+                    <div className="glass-elevated rounded-xl border border-white/70 p-2">
+                        <Button
+                            variant="gradient"
+                            className="w-full"
+                            onClick={() => {
+                                setShouldAutoAnalyze(true);
+                                setCurrentStep('analyze');
+                            }}
+                        >
+                            {script ? 'Continue with Video and Script' : 'Continue with Video'}
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -784,24 +810,24 @@ function SceneTimeline({
     return (
         <div className="space-y-2 bg-surface-elevated rounded-xl p-4 border border-border">
             {/* Header with instructions */}
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                    <Scissors className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Scene Timeline</span>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex items-center gap-2">
+                    <Scissors className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="text-sm font-semibold leading-none">Scene Timeline</span>
                     {hasAudio !== undefined && (
-                        <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            hasAudio
-                                ? "bg-primary/15 text-primary"
-                                : "bg-muted text-muted-foreground"
-                        )}>
+                        <span
+                            className={cn(
+                                "inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium whitespace-nowrap",
+                                hasAudio ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                            )}
+                        >
                             {hasAudio ? "Narrative timing" : "Scene timing"}
                         </span>
                     )}
                 </div>
-                <span className="text-xs text-muted-foreground">
-                    Double-click to add cut • Drag handles to adjust
-                </span>
+                <p className="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground sm:text-right">
+                    Double-click to add cut · Drag handles to adjust
+                </p>
             </div>
 
             {/* Time markers row */}
@@ -6876,7 +6902,7 @@ export default function Home() {
         })();
 
         const isActive = stepId === currentStep;
-        const isLocked = stepIndex > currentIndex + 1;
+        const isLocked = stepIndex > currentIndex;
         const isProcessing =
             (stepId === 'analyze' && isAnalyzing) ||
             (stepId === 'translate' && isTranslating) ||
@@ -6899,19 +6925,32 @@ export default function Home() {
     ];
     const activeStep = stepConfigs.find((step) => step.id === currentStep) ?? stepConfigs[0];
     const activeStatus = getStepStatus(activeStep.id);
+    const totalSteps = stepConfigs.length;
+    const currentStepNumber = Math.max(currentIndex + 1, 1);
+    const completedSteps = stepConfigs.filter((step) => getStepStatus(step.id).isCompleted).length;
+    const progressValue = Math.round((completedSteps / totalSteps) * 100);
 
     return (
         <main className="min-h-screen">
             {/* Header */}
             <header className="sticky top-0 z-50 border-b border-white/50 glass-elevated">
                 <div className="max-w-7xl mx-auto px-4 py-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
-                            <Film className="w-5 h-5 text-white" />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
+                                <Film className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-lg">POD Translation</h1>
+                                <p className="text-xs text-muted-foreground">Video Automation Tool</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="font-bold text-lg">POD Translation</h1>
-                            <p className="text-xs text-muted-foreground">Video Automation Tool</p>
+                        <div className="w-full sm:w-[280px]">
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                                <span className="font-medium text-foreground">Step {currentStepNumber} of {totalSteps}</span>
+                                <span className="text-muted-foreground">{progressValue}%</span>
+                            </div>
+                            <Progress value={progressValue} />
                         </div>
                     </div>
                 </div>
@@ -6921,6 +6960,14 @@ export default function Home() {
             <div className="max-w-7xl mx-auto px-4 py-6">
                 <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
                     <aside className="glass rounded-2xl p-3 lg:sticky lg:top-24">
+                        <div className="mb-3 rounded-xl bg-white/40 p-3">
+                            <p className="text-xs font-medium text-foreground">
+                                Progress: {completedSteps} / {totalSteps} completed
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Current: {activeStep.title}
+                            </p>
+                        </div>
                         <div className="space-y-2">
                             {stepConfigs.map((step, index) => {
                                 const { isCompleted, isActive, isLocked, isProcessing } = getStepStatus(step.id);
