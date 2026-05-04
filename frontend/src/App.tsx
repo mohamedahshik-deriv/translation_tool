@@ -6858,16 +6858,10 @@ function ExportStepContent() {
 // ============================================
 
 export default function Home() {
-    const { currentStep, video, segments, isAnalyzing, isTranslating, isGeneratingDubbing, isExporting } = useAppStore();
-    const [expandedSteps, setExpandedSteps] = useState<Set<AppStep>>(new Set(['upload']));
+    const { currentStep, video, segments, isAnalyzing, isTranslating, isGeneratingDubbing, isExporting, setCurrentStep } = useAppStore();
 
     const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'translate-voiceover', 'dub', 'outro', 'export'];
     const currentIndex = stepOrder.indexOf(currentStep);
-
-    // Auto-expand current step
-    useEffect(() => {
-        setExpandedSteps(prev => new Set([...prev, currentStep]));
-    }, [currentStep]);
 
     const getStepStatus = (stepId: AppStep) => {
         const stepIndex = stepOrder.indexOf(stepId);
@@ -6893,21 +6887,6 @@ export default function Home() {
         return { isCompleted, isActive, isLocked, isProcessing };
     };
 
-    const toggleStep = (stepId: AppStep) => {
-        const { isLocked } = getStepStatus(stepId);
-        if (isLocked) return;
-
-        setExpandedSteps(prev => {
-            const next = new Set(prev);
-            if (next.has(stepId)) {
-                next.delete(stepId);
-            } else {
-                next.add(stepId);
-            }
-            return next;
-        });
-    };
-
     const stepConfigs = [
         { id: 'upload' as AppStep, title: 'Upload Video', description: 'Upload your video file', icon: <Upload className="w-4 h-4" />, content: <StepErrorBoundary><UploadStepContent /></StepErrorBoundary> },
         { id: 'analyze' as AppStep, title: 'Analyze Scenes', description: 'AI detects scene changes', icon: <Scan className="w-4 h-4" />, content: <StepErrorBoundary><AnalyzeStepContent /></StepErrorBoundary> },
@@ -6918,12 +6897,14 @@ export default function Home() {
         { id: 'outro' as AppStep, title: 'Outro', description: 'Add CTA and disclaimer', icon: <Film className="w-4 h-4" />, content: <StepErrorBoundary><OutroStepContent /></StepErrorBoundary> },
         { id: 'export' as AppStep, title: 'Export', description: 'Download all translated videos', icon: <Download className="w-4 h-4" />, content: <StepErrorBoundary><ExportStepContent /></StepErrorBoundary> },
     ];
+    const activeStep = stepConfigs.find((step) => step.id === currentStep) ?? stepConfigs[0];
+    const activeStatus = getStepStatus(activeStep.id);
 
     return (
         <main className="min-h-screen">
             {/* Header */}
             <header className="sticky top-0 z-50 border-b border-white/50 glass-elevated">
-                <div className="max-w-6xl mx-auto px-4 py-4">
+                <div className="max-w-7xl mx-auto px-4 py-4">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
                             <Film className="w-5 h-5 text-white" />
@@ -6937,30 +6918,70 @@ export default function Home() {
             </header>
 
             {/* Main content */}
-            <div className="max-w-6xl mx-auto px-4 py-6">
-                <div className="space-y-3">
-                    {stepConfigs.map((step) => {
-                        const { isCompleted, isActive, isLocked, isProcessing } = getStepStatus(step.id);
-                        const isExpanded = expandedSteps.has(step.id);
+            <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+                    <aside className="glass rounded-2xl p-3 lg:sticky lg:top-24">
+                        <div className="space-y-2">
+                            {stepConfigs.map((step, index) => {
+                                const { isCompleted, isActive, isLocked, isProcessing } = getStepStatus(step.id);
+                                return (
+                                    <button
+                                        key={step.id}
+                                        type="button"
+                                        onClick={() => { if (!isLocked) setCurrentStep(step.id); }}
+                                        disabled={isLocked}
+                                        className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all",
+                                            isActive ? "bg-white/60 ring-1 ring-blue-300/50 shadow-sm" : "hover:bg-white/35",
+                                            isLocked && "opacity-60 cursor-not-allowed",
+                                        )}
+                                    >
+                                        <div
+                                            className={cn(
+                                                "w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0",
+                                                isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-sm",
+                                                isActive && !isCompleted && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm",
+                                                isLocked && "bg-white/50 text-muted-foreground border border-white/60",
+                                                !isActive && !isCompleted && !isLocked && "bg-white/50 text-foreground border border-white/60",
+                                            )}
+                                        >
+                                            {isProcessing ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : isCompleted ? (
+                                                <Check className="w-3.5 h-3.5" />
+                                            ) : (
+                                                index + 1
+                                            )}
+                                        </div>
 
-                        return (
-                            <StepSection
-                                key={step.id}
-                                stepId={step.id}
-                                title={step.title}
-                                description={step.description}
-                                icon={step.icon}
-                                isCompleted={isCompleted}
-                                isActive={isActive}
-                                isLocked={isLocked}
-                                isExpanded={isExpanded}
-                                isProcessing={isProcessing}
-                                onToggle={() => toggleStep(step.id)}
-                            >
-                                {step.content}
-                            </StepSection>
-                        );
-                    })}
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium truncate">{step.title}</p>
+                                            <p className="text-xs text-muted-foreground truncate">{step.description}</p>
+                                        </div>
+
+                                        {isLocked && <Lock className="w-3.5 h-3.5 text-muted-foreground ml-auto shrink-0" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </aside>
+
+                    <section>
+                        <StepSection
+                            stepId={activeStep.id}
+                            title={activeStep.title}
+                            description={activeStep.description}
+                            icon={activeStep.icon}
+                            isCompleted={activeStatus.isCompleted}
+                            isActive={activeStatus.isActive}
+                            isLocked={activeStatus.isLocked}
+                            isExpanded={true}
+                            isProcessing={activeStatus.isProcessing}
+                            onToggle={() => {}}
+                        >
+                            {activeStep.content}
+                        </StepSection>
+                    </section>
                 </div>
             </div>
         </main>
