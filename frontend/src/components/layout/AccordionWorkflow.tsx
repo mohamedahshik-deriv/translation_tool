@@ -42,12 +42,20 @@ function StepSection({
     children
 }: StepSectionProps) {
     const Icon = iconMap[step.icon];
-    const { isAnalyzing, isTranslating, isGeneratingDubbing, isExporting, video } = useAppStore();
+    const {
+        isAnalyzing,
+        isTranslatingText,
+        isTranslatingVoiceover,
+        isGeneratingDubbing,
+        isExporting,
+        video,
+    } = useAppStore();
 
     // Check if this step is currently processing
     const isProcessing =
         (step.id === 'analyze' && isAnalyzing) ||
-        (step.id === 'translate' && isTranslating) ||
+        (step.id === 'translate' && isTranslatingText) ||
+        (step.id === 'translate-voiceover' && isTranslatingVoiceover) ||
         (step.id === 'dub' && isGeneratingDubbing) ||
         (step.id === 'export' && isExporting);
 

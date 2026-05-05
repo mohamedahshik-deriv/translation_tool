@@ -47,6 +47,7 @@ import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, Animat
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
 import { extractFrame } from "@/lib/frame-extractor";
+import interpreterModeIcon from "../assets/interpreter_mode_icon.svg";
 
 // ============================================
 // Step Section Component (Accordion Item)
@@ -832,10 +833,13 @@ function SceneTimeline({
 
             {/* Time markers row */}
             <div className="relative h-5 mb-1">
-                {timeMarkers.map((t) => (
+                {timeMarkers.map((t, index) => (
                     <div
                         key={t}
-                        className="absolute text-[10px] text-muted-foreground font-mono -translate-x-1/2"
+                        className={cn(
+                            "absolute text-[10px] text-muted-foreground font-mono",
+                            index === 0 ? "" : index === timeMarkers.length - 1 ? "-translate-x-full" : "-translate-x-1/2"
+                        )}
                         style={{ left: `${(t / duration) * 100}%` }}
                     >
                         {formatTimeShort(t)}
@@ -4703,7 +4707,7 @@ function reapplyRedMarkup(translated: string, translatedRedWord: string | null):
 function TranslateStepContent() {
     const {
         selectedLanguages, toggleLanguage, setCurrentStep,
-        segments, video, translations, setTranslations, updateTranslation, isTranslating, setIsTranslating,
+        segments, video, translations, setTranslations, updateTranslation, isTranslatingText, setIsTranslatingText,
         detectedVoiceoverLanguage, outroConfig, setOutroConfig,
     } = useAppStore();
 
@@ -4784,7 +4788,7 @@ function TranslateStepContent() {
 
     const startTranslation = async () => {
         if (selectedLanguages.length === 0 || allLayers.length === 0) return;
-        setIsTranslating(true);
+        setIsTranslatingText(true);
         setHighlightStatus({});
         setHighlightError(null);
 
@@ -4903,7 +4907,7 @@ function TranslateStepContent() {
             alert(`Translation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
             targetLangs.forEach(l => setTranslateProgress(prev => ({ ...prev, [l]: 'error' })));
         } finally {
-            setIsTranslating(false);
+            setIsTranslatingText(false);
         }
     };
 
@@ -4942,8 +4946,8 @@ function TranslateStepContent() {
                     return (
                         <button
                             key={lang.code}
-                            onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
-                            disabled={isTranslating || isSource}
+                            onClick={() => !isTranslatingText && !isSource && toggleLanguage(lang.code)}
+                            disabled={isTranslatingText || isSource}
                             title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                             className={cn(
                                 "flex items-center gap-2 p-3 rounded-lg border transition-all",
@@ -4952,7 +4956,7 @@ function TranslateStepContent() {
                                     : selectedLanguages.includes(lang.code)
                                         ? "border-primary bg-primary/10 text-primary"
                                         : "border-border hover:border-muted-foreground/50",
-                                isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                isTranslatingText && !isSource && "opacity-60 cursor-not-allowed"
                             )}
                         >
                             <span className="text-lg">{lang.flag}</span>
@@ -4991,9 +4995,9 @@ function TranslateStepContent() {
                         variant="gradient"
                         className="w-full"
                         onClick={startTranslation}
-                        disabled={isTranslating || selectedLanguages.length === 0}
+                        disabled={isTranslatingText || selectedLanguages.length === 0}
                     >
-                        {isTranslating ? (
+                        {isTranslatingText ? (
                             <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
                         ) : (
                             <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
@@ -5007,7 +5011,7 @@ function TranslateStepContent() {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Live Preview</span>
-                        <Button variant="outline" size="sm" onClick={startTranslation} disabled={isTranslating}>
+                        <Button variant="outline" size="sm" onClick={startTranslation} disabled={isTranslatingText}>
                             <Scan className="w-3.5 h-3.5 mr-1.5" />
                             Re-translate
                         </Button>
@@ -5211,7 +5215,7 @@ function TranslateVoiceoverStepContent() {
         selectedLanguages, toggleLanguage, setCurrentStep,
         segments,
         scriptEntries, voiceoverTranslations, setVoiceoverTranslation,
-        isTranslating, setIsTranslating,
+        isTranslatingVoiceover, setIsTranslatingVoiceover,
         detectedVoiceoverLanguage,
     } = useAppStore();
 
@@ -5240,7 +5244,7 @@ function TranslateVoiceoverStepContent() {
             setCurrentStep('dub');
             return;
         }
-        setIsTranslating(true);
+        setIsTranslatingVoiceover(true);
         const initProgress: Record<string, 'pending' | 'translating' | 'done' | 'error'> = {};
         targetLangs.forEach(l => { initProgress[l] = 'pending'; });
         // Mark source language slot as done immediately (no translation needed)
@@ -5281,7 +5285,7 @@ function TranslateVoiceoverStepContent() {
             alert(`Voiceover translation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
             targetLangs.forEach(l => setTranslateProgress(prev => ({ ...prev, [l]: 'error' })));
         } finally {
-            setIsTranslating(false);
+            setIsTranslatingVoiceover(false);
         }
     };
 
@@ -5307,8 +5311,8 @@ function TranslateVoiceoverStepContent() {
                             return (
                                 <button
                                     key={lang.code}
-                                    onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
-                                    disabled={isTranslating || isSource}
+                                    onClick={() => !isTranslatingVoiceover && !isSource && toggleLanguage(lang.code)}
+                                    disabled={isTranslatingVoiceover || isSource}
                                     title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                                     className={cn(
                                         "flex items-center gap-2 p-3 rounded-lg border transition-all",
@@ -5317,7 +5321,7 @@ function TranslateVoiceoverStepContent() {
                                             : selectedLanguages.includes(lang.code)
                                                 ? "border-primary bg-primary/10 text-primary"
                                                 : "border-border hover:border-muted-foreground/50",
-                                        isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                        isTranslatingVoiceover && !isSource && "opacity-60 cursor-not-allowed"
                                     )}
                                 >
                                     <span className="text-lg">{lang.flag}</span>
@@ -5350,9 +5354,9 @@ function TranslateVoiceoverStepContent() {
                             variant="outline"
                             className="w-full"
                             onClick={startTranslation}
-                            disabled={isTranslating || targetLangs.length === 0}
+                            disabled={isTranslatingVoiceover || targetLangs.length === 0}
                         >
-                            {isTranslating ? (
+                            {isTranslatingVoiceover ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating voiceover...</>
                             ) : (
                                 <><Languages className="w-4 h-4 mr-2" />Translate Voiceover ({targetLangs.length} {targetLangs.length === 1 ? 'language' : 'languages'})</>
@@ -5388,9 +5392,9 @@ function TranslateVoiceoverStepContent() {
                                 size="sm"
                                 className="w-full"
                                 onClick={startTranslation}
-                                disabled={isTranslating || targetLangs.length === 0}
+                                disabled={isTranslatingVoiceover || targetLangs.length === 0}
                             >
-                                {isTranslating ? (
+                                {isTranslatingVoiceover ? (
                                     <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Retranslating...</>
                                 ) : (
                                     <><RefreshCw className="w-3.5 h-3.5 mr-2" />Re-translate</>
@@ -6884,7 +6888,17 @@ function ExportStepContent() {
 // ============================================
 
 export default function Home() {
-    const { currentStep, video, segments, isAnalyzing, isTranslating, isGeneratingDubbing, isExporting, setCurrentStep } = useAppStore();
+    const {
+        currentStep,
+        video,
+        segments,
+        isAnalyzing,
+        isTranslatingText,
+        isTranslatingVoiceover,
+        isGeneratingDubbing,
+        isExporting,
+        setCurrentStep,
+    } = useAppStore();
 
     const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'translate-voiceover', 'dub', 'outro', 'export'];
     const currentIndex = stepOrder.indexOf(currentStep);
@@ -6905,8 +6919,8 @@ export default function Home() {
         const isLocked = stepIndex > currentIndex;
         const isProcessing =
             (stepId === 'analyze' && isAnalyzing) ||
-            (stepId === 'translate' && isTranslating) ||
-            (stepId === 'translate-voiceover' && isTranslating) ||
+            (stepId === 'translate' && isTranslatingText) ||
+            (stepId === 'translate-voiceover' && isTranslatingVoiceover) ||
             (stepId === 'dub' && isGeneratingDubbing) ||
             (stepId === 'export' && isExporting);
 
@@ -6943,7 +6957,7 @@ export default function Home() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
-                                <Film className="w-5 h-5 text-white" />
+                                <img src={interpreterModeIcon} alt="Interpreter mode icon" className="w-5 h-5 invert" />
                             </div>
                             <div>
                                 <h1 className="font-bold text-lg">POD Translation</h1>

@@ -1,7 +1,7 @@
 "use client";
 
-import { Film } from "lucide-react";
 import { StepWizard } from "./StepWizard";
+import interpreterModeIcon from "../../../assets/interpreter_mode_icon.svg";
 
 export function Header() {
     return (
@@ -10,7 +10,7 @@ export function Header() {
                 {/* Logo */}
                 <div className="flex items-center gap-2 mr-8">
                     <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40">
-                        <Film className="w-5 h-5 text-white" />
+                        <img src={interpreterModeIcon} alt="Interpreter mode icon" className="w-5 h-5 invert" />
                     </div>
                     <div className="hidden md:block">
                         <h1 className="text-sm font-semibold text-foreground">POD Translation</h1>

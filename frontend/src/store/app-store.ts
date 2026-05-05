@@ -118,8 +118,10 @@ interface AppState {
     // Loading states
     isAnalyzing: boolean;
     setIsAnalyzing: (value: boolean) => void;
-    isTranslating: boolean;
-    setIsTranslating: (value: boolean) => void;
+    isTranslatingText: boolean;
+    setIsTranslatingText: (value: boolean) => void;
+    isTranslatingVoiceover: boolean;
+    setIsTranslatingVoiceover: (value: boolean) => void;
     isGeneratingDubbing: boolean;
     setIsGeneratingDubbing: (value: boolean) => void;
     isExporting: boolean;
@@ -159,7 +161,8 @@ const initialState = {
     suggestedOutroTextColor: '#181C25',
     detectedVoiceoverLanguage: null as { code: string; name: string } | null,
     isAnalyzing: false,
-    isTranslating: false,
+    isTranslatingText: false,
+    isTranslatingVoiceover: false,
     isGeneratingDubbing: false,
     isExporting: false,
 };
@@ -328,7 +331,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 
     setIsAnalyzing: (value) => set({ isAnalyzing: value }),
-    setIsTranslating: (value) => set({ isTranslating: value }),
+    setIsTranslatingText: (value) => set({ isTranslatingText: value }),
+    setIsTranslatingVoiceover: (value) => set({ isTranslatingVoiceover: value }),
     setIsGeneratingDubbing: (value) => set({ isGeneratingDubbing: value }),
     setIsExporting: (value) => set({ isExporting: value }),
 
