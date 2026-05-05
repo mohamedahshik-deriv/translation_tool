@@ -5087,7 +5087,12 @@ function TranslateStepContent() {
                                         : "border-border hover:border-primary/50 text-muted-foreground"
                                 )}
                             >
-                                {seg.isOutro ? '🎬 Outro' : `Scene ${i + 1}`}
+                                <span className="inline-flex items-center gap-0.5">
+                                    <span>{seg.isOutro ? '🎬 Outro' : `Scene ${i + 1}`}</span>
+                                    {seg.textLayers.length > 0 && (
+                                        <span className="text-[10px] opacity-75">({seg.textLayers.length})</span>
+                                    )}
+                                </span>
                             </button>
                         ))}
                     </div>
