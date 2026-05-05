@@ -4735,6 +4735,40 @@ function TranslateStepContent() {
     // dedicated translation flow via outroConfig.translations in OutroStepContent.
     const allLayers = segments.filter(seg => !seg.isOutro).flatMap(seg => seg.textLayers.map(l => ({ ...l, segmentId: seg.id })));
 
+    const normaliseCandidateForLayout = (text: string, langCode: string): string => {
+        // Arabic copywrite can include NBSP groups that alter wrapping. Normalize to regular
+        // spaces before measuring/applying so safe-zone layout remains stable.
+        if (langCode.toUpperCase() === 'AR') return text.replace(/\u00A0/g, ' ');
+        return text;
+    };
+
+    const measureOverlayLayout = (
+        text: string,
+        layer: typeof allLayers[number],
+        fontSize: number,
+    ): { lineCount: number; maxLineWidth: number } | null => {
+        if (!video) return null;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        const vW = Math.max(1, Math.round(video.width || 1080));
+        const bounds = getHorizontalBounds(layer.positionX, vW);
+        const maxWidth = Math.max(1, bounds.right - bounds.left);
+        const isArabicText = hasArabicScript(text);
+        const fontFamily = isArabicText ? ARABIC_FONT_STACK : DEFAULT_FONT_STACK;
+        const fontWeight = isArabicText ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
+        const maxLines = layer.textStyle === 'disclaimer' ? 0 : 2;
+
+        ctx.font = `${fontWeight} ${Math.max(8, Math.round(fontSize))}px ${fontFamily}`;
+        const lines = wrapRichTokens(ctx, tokenizeRichParts(text, layer.color || '#ffffff'), maxWidth, maxLines);
+        const lineWidths = lines.map((line) => ctx.measureText(line.map((t) => t.text).join('')).width);
+        return {
+            lineCount: lines.length,
+            maxLineWidth: lineWidths.length > 0 ? Math.max(...lineWidths) : 0,
+        };
+    };
+
     // Run Gemini markup + \u00A0 processing for a single language.
     // Safe to call concurrently for multiple languages — no shared lock.
     const applyHighlightsToTranslations = async (langCode: string) => {
@@ -4776,7 +4810,47 @@ function TranslateStepContent() {
             const results = await copywriteTranslateMarkup(pairs, langCode);
 
             results.forEach(({ layerId, marked }) => {
-                updateTranslation(layerId, langCode as import('@/types').LanguageCode, marked);
+                const store = useAppStore.getState();
+                const lang = langCode as import('@/types').LanguageCode;
+                const layer = allLayers.find((l) => l.id === layerId);
+                const existing = store.translations.get(layerId) ?? [];
+                const current = existing.find((t) => t.languageCode === lang);
+                const filtered = existing.filter((t) => t.languageCode !== lang);
+                const baselineText = current?.translatedContent ?? layer?.content ?? marked;
+                const baselineFontSize = current?.fontSizeOverride ?? layer?.fontSize ?? 24;
+
+                // Keep copywrite output locked to the original safe-zone layout for all
+                // languages: accept only when wrapping stays within the original envelope.
+                let finalContent = marked;
+                if (layer) {
+                    const normalizedCandidate = normaliseCandidateForLayout(marked, langCode);
+                    const baselineMetrics = measureOverlayLayout(baselineText, layer, baselineFontSize);
+                    const candidateMetrics = measureOverlayLayout(normalizedCandidate, layer, baselineFontSize);
+
+                    if (baselineMetrics && candidateMetrics) {
+                        const keepsLineCount = candidateMetrics.lineCount <= baselineMetrics.lineCount;
+                        const keepsWidthEnvelope = candidateMetrics.maxLineWidth <= baselineMetrics.maxLineWidth + 6;
+                        finalContent = (keepsLineCount && keepsWidthEnvelope) ? normalizedCandidate : baselineText;
+                    } else {
+                        finalContent = normalizedCandidate;
+                    }
+                }
+
+                setTranslations(layerId, [
+                    ...filtered,
+                    {
+                        id: current?.id ?? `tr-${layerId}-${lang}`,
+                        textLayerId: layerId,
+                        languageCode: lang,
+                        translatedContent: finalContent,
+                        positionXOverride: current?.positionXOverride ?? layer?.positionX,
+                        positionYOverride: current?.positionYOverride ?? layer?.positionY,
+                        positionAnchorOverride: current?.positionAnchorOverride ?? layer?.positionAnchor,
+                        fontSizeOverride: current?.fontSizeOverride ?? layer?.fontSize,
+                        audioPath: current?.audioPath,
+                        audioBlobUrl: current?.audioBlobUrl,
+                    },
+                ]);
             });
 
             setHighlightStatus(prev => ({ ...prev, [langCode]: 'done' }));
@@ -4831,6 +4905,10 @@ function TranslateStepContent() {
                     textLayerId: layer.id,
                     languageCode: textSrcLangCode,
                     translatedContent: layer.content,
+                    positionXOverride: layer.positionX,
+                    positionYOverride: layer.positionY,
+                    positionAnchorOverride: layer.positionAnchor,
+                    fontSizeOverride: layer.fontSize,
                 }]);
             });
             setTranslateProgress(prev => ({ ...prev, [textSrcLangCode]: 'done' }));
@@ -4868,6 +4946,10 @@ function TranslateStepContent() {
                             textLayerId: layer.id,
                             languageCode: lang as import('@/types').LanguageCode,
                             translatedContent: withColor,
+                            positionXOverride: layer.positionX,
+                            positionYOverride: layer.positionY,
+                            positionAnchorOverride: layer.positionAnchor,
+                            fontSizeOverride: layer.fontSize,
                         }]);
                     });
                     setTranslateProgress(prev => ({ ...prev, [lang]: 'done' }));
@@ -4919,10 +5001,10 @@ function TranslateStepContent() {
         return {
             id: layer.id,
             content: tr?.translatedContent ?? layer.content,
-            positionX: layer.positionX,
-            positionY: layer.positionY,
-            positionAnchor: layer.positionAnchor,
-            fontSize: layer.fontSize,
+            positionX: tr?.positionXOverride ?? layer.positionX,
+            positionY: tr?.positionYOverride ?? layer.positionY,
+            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor,
+            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             textStyle: layer.textStyle,
             color: layer.color,
@@ -5593,10 +5675,10 @@ function DubPreviewPlayer({
         return {
             id: layer.id,
             content: tr?.translatedContent ?? layer.content,
-            positionX: layer.positionX,
-            positionY: layer.positionY,
-            positionAnchor: layer.positionAnchor,
-            fontSize: layer.fontSize,
+            positionX: tr?.positionXOverride ?? layer.positionX,
+            positionY: tr?.positionYOverride ?? layer.positionY,
+            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor,
+            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             textStyle: layer.textStyle,
             color: layer.color,
@@ -6676,10 +6758,10 @@ function ExportStepContent() {
                         }
                         return {
                             content,
-                            positionX: layer.positionX,
-                            positionY: layer.positionY,
-                            positionAnchor: layer.positionAnchor ?? 'middle',
-                            fontSize: layer.fontSize,
+                            positionX: tr?.positionXOverride ?? layer.positionX,
+                            positionY: tr?.positionYOverride ?? layer.positionY,
+                            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor ?? 'middle',
+                            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
                             fontWeight: layer.fontWeight ?? 800,
                             color: layer.color,
                             backgroundColor: layer.backgroundColor ?? undefined,

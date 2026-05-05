@@ -314,6 +314,10 @@ export interface Translation {
     textLayerId: string;
     languageCode: LanguageCode;
     translatedContent: string;
+    positionXOverride?: number;
+    positionYOverride?: number;
+    positionAnchorOverride?: 'top' | 'middle' | 'bottom';
+    fontSizeOverride?: number;
     audioPath?: string;
     audioBlobUrl?: string;
 }
