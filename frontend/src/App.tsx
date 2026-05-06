@@ -2347,6 +2347,8 @@ async function renderLayerOverlayToPng(
     const fontWeight = isArabic ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
     const textDirection: 'rtl' | 'ltr' = isArabic ? 'rtl' : 'ltr';
     const bounds = getHorizontalBounds(layer.positionX, canvas.width);
+    const effectiveAlign: 'left' | 'center' | 'right' =
+        bounds.align === 'right' && !isArabic ? 'left' : bounds.align;
     const maxWidth = Math.max(1, bounds.right - bounds.left);
     const resolveFittedFontSize = (): number => {
         const maxLines = layer.maxLines <= 0 ? Number.MAX_SAFE_INTEGER : layer.maxLines;
@@ -2401,9 +2403,9 @@ async function renderLayerOverlayToPng(
 
     if (layer.backgroundColor) {
         const blockWidth = Math.min(maxWidth, Math.max(...lineWidths));
-        const left = bounds.align === 'left'
+        const left = effectiveAlign === 'left'
             ? bounds.left
-            : bounds.align === 'right'
+            : effectiveAlign === 'right'
                 ? bounds.right - blockWidth
                 : bounds.left + (maxWidth - blockWidth) / 2;
         drawRoundedRect(ctx, left - 14, startY - 6, blockWidth + 28, totalHeight + 12, 6);
@@ -2416,9 +2418,9 @@ async function renderLayerOverlayToPng(
         const width = lineWidths[i];
         const y = startY + (i * lineHeightPx);
         if (isArabic) {
-            let x = bounds.align === 'left'
+            let x = effectiveAlign === 'left'
                 ? bounds.left + width
-                : bounds.align === 'right'
+                : effectiveAlign === 'right'
                     ? bounds.right
                     : bounds.left + ((maxWidth + width) / 2);
             for (const token of line) {
@@ -2427,9 +2429,9 @@ async function renderLayerOverlayToPng(
                 x -= ctx.measureText(token.text).width;
             }
         } else {
-            let x = bounds.align === 'left'
+            let x = effectiveAlign === 'left'
                 ? bounds.left
-                : bounds.align === 'right'
+                : effectiveAlign === 'right'
                     ? bounds.right - width
                     : bounds.left + (maxWidth - width) / 2;
             for (const token of line) {
@@ -3375,10 +3377,14 @@ function SceneVideoPlayer({
                             );
                         }
 
-                        // Determine text alignment based on horizontal position (px thresholds)
+                        // Keep box placement tied to grid zone, but allow independent text alignment.
                         const vW = videoDims.width;
                         const vH = videoDims.height;
-                        const textAlign: 'left' | 'center' | 'right' = layer.positionX <= vW * 0.20 ? 'left' : layer.positionX >= vW * 0.80 ? 'right' : 'center';
+                        const horizontalZone: 'left' | 'center' | 'right' =
+                            layer.positionX <= vW * 0.20 ? 'left' : layer.positionX >= vW * 0.80 ? 'right' : 'center';
+                        const isArabicLayer = hasArabicScript(layer.content ?? '');
+                        const textAlign: 'left' | 'center' | 'right' =
+                            horizontalZone === 'right' ? (isArabicLayer ? 'right' : 'left') : horizontalZone;
                         // Vertical transform: use explicit anchor when set, else derive from position
                         const translateY = layer.positionAnchor === 'top'    ? '0%'
                                          : layer.positionAnchor === 'bottom' ? '-100%'
@@ -3390,9 +3396,9 @@ function SceneVideoPlayer({
                         // Derive horizontal bounds from positionX so left-/right-aligned
                         // text anchors to the grid x coordinate, not the fixed 12% safe margin.
                         const xPct = (layer.positionX / vW) * 100;
-                        const horizStyle = textAlign === 'left'
+                        const horizStyle = horizontalZone === 'left'
                             ? { left: `${xPct}%`,        right: '12%' }
-                            : textAlign === 'right'
+                            : horizontalZone === 'right'
                             ? { left: '12%',              right: `${100 - xPct}%` }
                             : { left: '12%',              right: '12%' }; // center: span safe area
 
@@ -3413,7 +3419,6 @@ function SceneVideoPlayer({
                                 }}
                             >
                                 {(() => {
-                                    const isArabicLayer = hasArabicScript(layer.content ?? '');
                                     const layerFontFamily = isArabicLayer ? ARABIC_FONT_STACK : DEFAULT_FONT_STACK;
                                     const layerFontWeight = isArabicLayer ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
                                     return layer.textStyle === 'disclaimer' ? (
@@ -3448,9 +3453,9 @@ function SceneVideoPlayer({
                                                     display: 'block',
                                                     overflow: 'visible',
                                                     transform: 'scale(0.5)',
-                                                    transformOrigin: textAlign === 'left' ? 'top left' : textAlign === 'right' ? 'top right' : 'top center',
+                                                    transformOrigin: horizontalZone === 'left' ? 'top left' : horizontalZone === 'right' ? 'top right' : 'top center',
                                                     width: '200%',
-                                                    marginLeft: textAlign === 'center' ? '-50%' : textAlign === 'right' ? '-100%' : '0',
+                                                    marginLeft: horizontalZone === 'center' ? '-50%' : horizontalZone === 'right' ? '-100%' : '0',
                                                 }}
                                             >
                                                 {layer.content}
