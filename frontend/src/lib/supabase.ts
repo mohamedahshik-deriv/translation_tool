@@ -211,6 +211,7 @@ export async function matchScriptToScenes(
         scenes: {
             startTime: number;
             endTime: number;
+            narrativeEnd?: number;
             description: string;
             textOnScreen?: string;
             voiceover?: string;

@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - ./backend/.env.local
+    environment:
+      FRONTEND_URL: "http://localhost:3000"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_BACKEND_URL: "/api"
+        VITE_SUPABASE_URL: "${VITE_SUPABASE_URL}"
+        VITE_SUPABASE_ANON_KEY: "${VITE_SUPABASE_ANON_KEY}"
+    env_file:
+      - ./frontend/.env.local  
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped

@@ -6778,6 +6778,7 @@ function ExportStepContent() {
                             }
                         }
                         return {
+                            id: layer.id,
                             content,
                             positionX: tr?.positionXOverride ?? layer.positionX,
                             positionY: tr?.positionYOverride ?? layer.positionY,
