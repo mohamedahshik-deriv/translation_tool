@@ -1529,7 +1529,7 @@ function AnalyzeStepContent() {
 
                     // With audio: use narrativeEnd so cuts align with speech boundaries.
                     // Without audio: use visual endTime (no narrative to align to).
-                    const aiCutPoints = result.scenes.slice(0, -1).map(s => {
+                    const aiCutPoints = result.scenes.slice(0, -1).map((s: { endTime: number; narrativeEnd?: number }) => {
                         const t = (videoHasAudio && s.narrativeEnd && s.narrativeEnd > 0)
                             ? s.narrativeEnd
                             : s.endTime;
@@ -6778,6 +6778,7 @@ function ExportStepContent() {
                             }
                         }
                         return {
+                            id: layer.id,
                             content,
                             positionX: tr?.positionXOverride ?? layer.positionX,
                             positionY: tr?.positionYOverride ?? layer.positionY,
