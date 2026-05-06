@@ -9,17 +9,19 @@ const buttonVariants = cva(
         variants: {
             variant: {
                 default:
-                    "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]",
+                    "bg-gradient-to-r from-sky-400 to-blue-500 text-white border-0 shadow-md shadow-blue-200/50 hover:brightness-110 hover:shadow-lg hover:shadow-blue-300/50 hover:scale-[1.02] active:scale-[0.98]",
                 destructive:
                     "bg-destructive text-destructive-foreground hover:bg-destructive/90",
                 outline:
-                    "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+                    "bg-white/55 backdrop-blur-sm border border-white/70 text-foreground hover:bg-white/75 transition-all shadow-sm",
                 secondary:
                     "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-                ghost: "hover:bg-accent hover:text-accent-foreground",
+                ghost: "hover:bg-white/45 text-foreground",
                 link: "text-primary underline-offset-4 hover:underline",
                 gradient:
-                    "bg-gradient-to-r from-primary to-purple-500 text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] glow-primary-hover",
+                    "bg-gradient-to-r from-sky-400 to-blue-500 text-white border-0 shadow-md shadow-blue-200/50 hover:brightness-110 hover:scale-[1.02] active:scale-[0.98] glow-primary-hover",
+                accent:
+                    "bg-gradient-to-r from-orange-400 to-pink-500 text-white border-0 shadow-md shadow-pink-200/50 hover:brightness-110 hover:shadow-lg hover:shadow-pink-300/50 hover:scale-[1.02] active:scale-[0.98]",
             },
             size: {
                 default: "h-10 px-4 py-2",

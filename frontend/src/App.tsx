@@ -11,11 +11,11 @@ class StepErrorBoundary extends React.Component<
     render() {
         if (this.state.error) {
             return (
-                <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                <div className="p-4 rounded-lg bg-red-100 border border-red-300 text-red-700 text-sm">
                     <p className="font-bold mb-1">Render Error</p>
                     <pre className="text-xs whitespace-pre-wrap">{this.state.error.message}</pre>
                     <button
-                        className="mt-2 px-3 py-1 rounded bg-red-500/20 text-red-300 text-xs"
+                        className="mt-2 px-3 py-1 rounded bg-red-200 text-red-700 text-xs"
                         onClick={() => this.setState({ error: null })}
                     >
                         Retry
@@ -38,7 +38,7 @@ import {
     ArrowRight, Plus, Trash2, Play, Pause, RotateCcw, Volume2, VolumeX,
     Scissors, GripVertical, Clock, FileText, X, BookOpen,
     SkipBack, SkipForward, CheckCircle2, AlertCircle, RefreshCw,
-    ChevronRight, Settings2, Pencil
+    ChevronLeft, ChevronRight, Settings2, Pencil
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -46,6 +46,8 @@ import { useAppStore } from "@/store/app-store";
 import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, SUPPORTED_RESOLUTIONS, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
+import { extractFrame } from "@/lib/frame-extractor";
+import interpreterModeIcon from "../assets/interpreter_mode_icon.svg";
 
 // ============================================
 // Step Section Component (Accordion Item)
@@ -81,11 +83,10 @@ function StepSection({
     return (
         <div
             className={cn(
-                "rounded-xl border overflow-hidden transition-all duration-300",
-                isActive && !isCompleted && "border-primary/50 bg-surface shadow-lg shadow-primary/5",
-                isCompleted && "border-success/30 bg-success/5",
-                isLocked && "border-border/50 bg-muted/10 opacity-50",
-                !isActive && !isCompleted && !isLocked && "border-border bg-surface"
+                "glass rounded-2xl overflow-hidden transition-all duration-300",
+                isActive && !isCompleted && "ring-2 ring-blue-300/50 shadow-xl shadow-blue-200/20",
+                isCompleted && "ring-2 ring-emerald-300/50 shadow-lg shadow-emerald-200/15",
+                isLocked && "opacity-50 grayscale-[25%]",
             )}
         >
             {/* Header */}
@@ -94,7 +95,7 @@ function StepSection({
                 disabled={isLocked}
                 className={cn(
                     "w-full flex items-center gap-4 p-4 text-left transition-colors",
-                    !isLocked && "hover:bg-muted/20",
+                    !isLocked && "hover:bg-white/30",
                     isLocked && "cursor-not-allowed"
                 )}
             >
@@ -102,11 +103,11 @@ function StepSection({
                 <div
                     className={cn(
                         "flex items-center justify-center w-10 h-10 rounded-full text-sm font-medium transition-all shrink-0",
-                        isCompleted && "bg-success text-white",
-                        isActive && !isCompleted && "bg-primary text-white",
-                        isProcessing && "bg-primary text-white animate-pulse",
-                        isLocked && "bg-muted text-muted-foreground",
-                        !isActive && !isCompleted && !isLocked && "bg-muted text-muted-foreground"
+                        isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-md shadow-green-200/50",
+                        isActive && !isCompleted && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md shadow-blue-200/50",
+                        isProcessing && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-md animate-pulse",
+                        isLocked && "bg-white/50 text-muted-foreground border border-white/60",
+                        !isActive && !isCompleted && !isLocked && "bg-white/40 text-muted-foreground border border-white/60"
                     )}
                 >
                     {isProcessing ? (
@@ -132,12 +133,12 @@ function StepSection({
                             {title}
                         </h3>
                         {isCompleted && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-success/20 text-success font-medium">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium border border-emerald-200">
                                 ✓ Done
                             </span>
                         )}
                         {isProcessing && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium border border-blue-200">
                                 Processing...
                             </span>
                         )}
@@ -166,7 +167,7 @@ function StepSection({
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                     >
-                        <div className="px-4 pb-4 border-t border-border/50">
+                        <div className="px-4 pb-4 border-t border-white/50">
                             {children}
                         </div>
                     </motion.div>
@@ -188,6 +189,7 @@ function UploadStepContent() {
     const [scriptError, setScriptError] = useState<string | null>(null);
     const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
     const [dummyResolution, setDummyResolution] = useState<VideoResolution>('1080x1920');
+    const isDev = import.meta.env.DEV;
 
     const handleDrop = async (e: React.DragEvent) => {
         e.preventDefault();
@@ -373,7 +375,7 @@ function UploadStepContent() {
         <div className="pt-4 space-y-4">
             {/* Video Upload */}
             {video ? (
-                <div className="flex items-center gap-4 p-3 rounded-lg bg-surface-elevated border border-border">
+                <div className="flex items-center gap-4 p-3 rounded-xl glass-subtle border-0">
                     <video
                         src={video.url}
                         className="w-24 h-16 object-cover rounded"
@@ -397,9 +399,11 @@ function UploadStepContent() {
                     onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                     onDragLeave={() => setIsDragging(false)}
                     onDrop={handleDrop}
+                    role="region"
+                    aria-label="Video upload area"
                     className={cn(
                         "border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
-                        isDragging ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/50"
+                        isDragging ? "border-primary/70 bg-primary/5 shadow-inner" : "border-white/60 bg-white/30 hover:bg-white/45"
                     )}
                 >
                     <input
@@ -408,26 +412,44 @@ function UploadStepContent() {
                         onChange={handleFileSelect}
                         className="hidden"
                         id="video-upload"
+                        aria-label="Upload video file"
                     />
-                    <label htmlFor="video-upload" className="cursor-pointer">
-                        <Upload className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
-                        <p className="font-medium mb-1">Drop your video here or click to browse</p>
-                        <p className="text-sm text-muted-foreground">MP4, MOV, WebM • Max 50MB</p>
-                        <p className="text-sm text-muted-foreground">1080×1080 • 1080×1350 • 1080×1920 • 1920×1080</p>
+                    <label htmlFor="video-upload" className="cursor-pointer block">
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-gradient-to-br from-cyan-400 via-blue-500 to-fuchsia-500 shadow-lg shadow-blue-300/40 mx-auto mb-4">
+                            <Upload className="w-8 h-8 text-white" />
+                        </div>
+                        <p className="font-medium mb-1">
+                            {isDragging ? "Release to upload your video" : "Drop your video here"}
+                        </p>
+                        <p className="text-sm text-muted-foreground mb-3">MP4, MOV, WebM - Max 50MB</p>
+                        <span className="inline-flex items-center rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary">
+                            Browse files
+                        </span>
                     </label>
                 </div>
             )}
             {videoUploadError && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-100 px-3 py-2.5 text-sm text-red-700">
                     <span className="mt-0.5 shrink-0">⚠</span>
                     <span>{videoUploadError}</span>
                 </div>
             )}
 
-            {/* Dev shortcut — skip upload & analysis */}
             {!video && (
-                <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
-                    <p className="text-xs text-muted-foreground text-center font-medium">Use Dummy Data (Dev)</p>
+                <details className="rounded-xl border border-white/60 bg-white/30 p-3">
+                    <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                        Supported resolutions
+                    </summary>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        1080x1080, 1080x1350, 1080x1920, 1920x1080
+                    </p>
+                </details>
+            )}
+
+            {/* Dev shortcut — skip upload & analysis */}
+            {!video && isDev && (
+                <div className="rounded-xl border border-dashed border-white/60 bg-white/20 p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground text-center font-medium">Development only</p>
                     <div className="grid grid-cols-4 gap-1.5">
                         {(['1080x1080', '1080x1350', '1080x1920', '1920x1080'] as VideoResolution[]).map((res) => (
                             <button
@@ -437,8 +459,8 @@ function UploadStepContent() {
                                 className={cn(
                                     "text-xs rounded-md px-2 py-1.5 border transition-colors",
                                     dummyResolution === res
-                                        ? "border-primary bg-primary/10 text-primary"
-                                        : "border-border text-muted-foreground hover:border-muted-foreground/50"
+                                        ? "border-primary bg-primary/10 text-primary shadow-sm"
+                                        : "border-white/60 bg-white/40 text-muted-foreground hover:bg-white/60"
                                 )}
                             >
                                 {res}
@@ -448,9 +470,9 @@ function UploadStepContent() {
                     <button
                         type="button"
                         onClick={handleUseDummyData}
-                        className="w-full text-xs text-primary border border-primary/40 rounded-md px-4 py-2 hover:bg-primary/10 transition-colors"
+                        className="w-full text-xs text-muted-foreground border border-white/70 rounded-md px-4 py-2 hover:text-primary hover:border-primary/40 hover:bg-primary/10 bg-white/30 transition-colors"
                     >
-                        Load Dummy Data →
+                        Use dummy data
                     </button>
                 </div>
             )}
@@ -467,9 +489,9 @@ function UploadStepContent() {
                 </p>
 
                 {script ? (
-                    <div className="flex items-center gap-3 p-3 rounded-lg bg-surface-elevated border border-border">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-                            <FileText className="w-4 h-4 text-primary" />
+                    <div className="flex items-center gap-3 p-3 rounded-xl glass-subtle border-0">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100">
+                            <FileText className="w-4 h-4 text-blue-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{script.name}</p>
@@ -492,7 +514,7 @@ function UploadStepContent() {
                         onDrop={handleScriptDrop}
                         className={cn(
                             "border-2 border-dashed rounded-xl p-5 text-center transition-all",
-                            isScriptDragging ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/50",
+                            isScriptDragging ? "border-primary/70 bg-primary/5 shadow-inner" : "border-white/60 bg-white/30 hover:bg-white/45",
                             isParsingScript && "opacity-60 pointer-events-none"
                         )}
                     >
@@ -503,6 +525,7 @@ function UploadStepContent() {
                             className="hidden"
                             id="script-upload"
                             disabled={isParsingScript}
+                            aria-label="Upload script file"
                         />
                         <label htmlFor="script-upload" className="cursor-pointer">
                             {isParsingScript ? (
@@ -513,8 +536,10 @@ function UploadStepContent() {
                             ) : (
                                 <>
                                     <FileText className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                                    <p className="text-sm font-medium mb-1">Drop your script here or click to browse</p>
-                                    <p className="text-xs text-muted-foreground">TXT, PDF, DOCX supported</p>
+                                    <p className="text-sm font-medium mb-1">
+                                        {isScriptDragging ? "Release to upload your script" : "Drop your script here or click to browse"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">TXT, PDF, DOCX supported - paste-ready after extraction</p>
                                 </>
                             )}
                         </label>
@@ -522,7 +547,7 @@ function UploadStepContent() {
                 )}
 
                 {scriptError && (
-                    <p className="text-xs text-red-400 flex items-center gap-1">
+                    <p className="text-xs text-red-600 flex items-center gap-1">
                         <X className="w-3 h-3" />
                         {scriptError}
                     </p>
@@ -531,17 +556,21 @@ function UploadStepContent() {
 
             {/* Continue button — only show when video is uploaded */}
             {video && (
-                <Button
-                    variant="gradient"
-                    className="w-full"
-                    onClick={() => {
-                        setShouldAutoAnalyze(true);
-                        setCurrentStep('analyze');
-                    }}
-                >
-                    {script ? 'Continue with Video & Script' : 'Continue with Video'}
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <div className="sticky bottom-4 z-20 pt-2">
+                    <div className="glass-elevated rounded-xl border border-white/70 p-2">
+                        <Button
+                            variant="gradient"
+                            className="w-full"
+                            onClick={() => {
+                                setShouldAutoAnalyze(true);
+                                setCurrentStep('analyze');
+                            }}
+                        >
+                            {script ? 'Continue with Video and Script' : 'Continue with Video'}
+                            <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -560,6 +589,7 @@ function SceneTimeline({
     fps,
     transcripts,
     hasAudio,
+    audioFile,
 }: {
     duration: number;
     cutPoints: number[];
@@ -572,14 +602,84 @@ function SceneTimeline({
     fps?: number;
     transcripts?: string[];
     hasAudio?: boolean;
+    audioFile?: File;
 }) {
     const timelineRef = useRef<HTMLDivElement>(null);
+    const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
     const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
     const [selectedCutIndex, setSelectedCutIndex] = useState<number | null>(null);
     const [hoverTime, setHoverTime] = useState<number | null>(null);
     const [isScrubbing, setIsScrubbing] = useState(false);
+    const [waveformPeaks, setWaveformPeaks] = useState<Float32Array | null>(null);
     const FPS = fps ?? 30;
     const FRAME = 1 / FPS; // one frame at detected fps
+
+    // Decode audio and compute per-pixel peak amplitudes
+    useEffect(() => {
+        if (!audioFile) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const arrayBuffer = await audioFile.arrayBuffer();
+                if (cancelled) return;
+                const audioCtx = new AudioContext();
+                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                if (cancelled) return;
+                audioCtx.close();
+                // Mix down all channels to mono
+                const numChannels = audioBuffer.numberOfChannels;
+                const length = audioBuffer.length;
+                const mono = new Float32Array(length);
+                for (let c = 0; c < numChannels; c++) {
+                    const channel = audioBuffer.getChannelData(c);
+                    for (let i = 0; i < length; i++) mono[i] += channel[i] / numChannels;
+                }
+                // Downsample to 1000 buckets (more than enough for any screen width)
+                const BUCKETS = 1000;
+                const peaks = new Float32Array(BUCKETS);
+                const bucketSize = Math.ceil(length / BUCKETS);
+                for (let b = 0; b < BUCKETS; b++) {
+                    let max = 0;
+                    const start = b * bucketSize;
+                    const end = Math.min(start + bucketSize, length);
+                    for (let i = start; i < end; i++) {
+                        const abs = Math.abs(mono[i]);
+                        if (abs > max) max = abs;
+                    }
+                    peaks[b] = max;
+                }
+                if (!cancelled) setWaveformPeaks(peaks);
+            } catch { /* audio decode failed — silently skip waveform */ }
+        })();
+        return () => { cancelled = true; };
+    }, [audioFile]);
+
+    // Draw waveform onto canvas whenever peaks change
+    useEffect(() => {
+        const canvas = waveformCanvasRef.current;
+        if (!canvas || !waveformPeaks) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const W = canvas.width;
+        const H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = 'rgba(15,15,25,1)';
+        ctx.fillRect(0, 0, W, H);
+        const mid = H / 2;
+        for (let x = 0; x < W; x++) {
+            const bucketIdx = Math.floor((x / W) * waveformPeaks.length);
+            const peak = waveformPeaks[bucketIdx] ?? 0;
+            const barH = Math.max(1, Math.round(peak * H * 0.9));
+            const intensity = Math.min(1, peak * 1.5);
+            const r = Math.round(40 + intensity * 160);
+            const g = Math.round(100 + intensity * 155);
+            const b = Math.round(200 + intensity * 55);
+            ctx.fillStyle = `rgb(${r},${g},${b})`;
+            ctx.fillRect(x, mid - barH / 2, 1, barH);
+        }
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(0, mid, W, 1);
+    }, [waveformPeaks]);
 
     // Snap a time value to the nearest frame boundary
     const snapToFrame = useCallback((time: number) => {
@@ -711,32 +811,35 @@ function SceneTimeline({
     return (
         <div className="space-y-2 bg-surface-elevated rounded-xl p-4 border border-border">
             {/* Header with instructions */}
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                    <Scissors className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Scene Timeline</span>
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0 flex items-center gap-2">
+                    <Scissors className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="text-sm font-semibold leading-none">Scene Timeline</span>
                     {hasAudio !== undefined && (
-                        <span className={cn(
-                            "text-xs px-2 py-0.5 rounded-full font-medium",
-                            hasAudio
-                                ? "bg-primary/15 text-primary"
-                                : "bg-muted text-muted-foreground"
-                        )}>
+                        <span
+                            className={cn(
+                                "inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium whitespace-nowrap",
+                                hasAudio ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                            )}
+                        >
                             {hasAudio ? "Narrative timing" : "Scene timing"}
                         </span>
                     )}
                 </div>
-                <span className="text-xs text-muted-foreground">
-                    Double-click to add cut • Drag handles to adjust
-                </span>
+                <p className="shrink-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-muted-foreground sm:text-right">
+                    Double-click to add cut · Drag handles to adjust
+                </p>
             </div>
 
             {/* Time markers row */}
             <div className="relative h-5 mb-1">
-                {timeMarkers.map((t) => (
+                {timeMarkers.map((t, index) => (
                     <div
                         key={t}
-                        className="absolute text-[10px] text-muted-foreground font-mono -translate-x-1/2"
+                        className={cn(
+                            "absolute text-[10px] text-muted-foreground font-mono",
+                            index === 0 ? "" : index === timeMarkers.length - 1 ? "-translate-x-full" : "-translate-x-1/2"
+                        )}
                         style={{ left: `${(t / duration) * 100}%` }}
                     >
                         {formatTimeShort(t)}
@@ -904,7 +1007,7 @@ function SceneTimeline({
                 {selectedCutIndex !== null && cutPoints[selectedCutIndex] !== undefined ? (
                     // ── Cut selected: nudge + delete controls ──
                     <>
-                        <span className="text-yellow-400 font-medium text-[10px]">Cut {selectedCutIndex + 1} selected</span>
+                        <span className="text-yellow-600 font-medium text-[10px]">Cut {selectedCutIndex + 1} selected</span>
                         <div className="flex items-center gap-1">
                             {/* Prev frame */}
                             <button
@@ -915,15 +1018,15 @@ function SceneTimeline({
                                     onMoveCut(selectedCutIndex, newTime);
                                     onSeek(newTime);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-400"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-600"
                             >
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                                     <rect x="1" y="2" width="2" height="8" rx="0.5" />
                                     <path d="M10 2L4 6l6 4V2z" />
                                 </svg>
                             </button>
-                            <Scissors className="w-3 h-3 text-yellow-400" />
-                            <span className="font-medium mx-1 text-yellow-400">{formatTime(cutPoints[selectedCutIndex])}</span>
+                            <Scissors className="w-3 h-3 text-yellow-600" />
+                            <span className="font-medium mx-1 text-yellow-600">{formatTime(cutPoints[selectedCutIndex])}</span>
                             {/* Next frame */}
                             <button
                                 type="button"
@@ -933,7 +1036,7 @@ function SceneTimeline({
                                     onMoveCut(selectedCutIndex, newTime);
                                     onSeek(newTime);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-400"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-yellow-400/20 transition-colors text-yellow-600"
                             >
                                 <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
                                     <rect x="9" y="2" width="2" height="8" rx="0.5" />
@@ -948,7 +1051,7 @@ function SceneTimeline({
                                     onRemoveCut(selectedCutIndex);
                                     setSelectedCutIndex(null);
                                 }}
-                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-red-500/20 transition-colors text-red-400 ml-1"
+                                className="flex items-center justify-center w-6 h-6 rounded hover:bg-red-500/20 transition-colors text-red-600 ml-1"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -997,6 +1100,43 @@ function SceneTimeline({
                     </>
                 )}
             </div>
+
+            {/* Waveform strip — shown only when audio is available */}
+            {waveformPeaks && (
+                <div className="relative mt-1 rounded-lg overflow-hidden" style={{ height: '40px' }}>
+                    <canvas
+                        ref={waveformCanvasRef}
+                        width={1000}
+                        height={40}
+                        className="w-full h-full"
+                        style={{ display: 'block', imageRendering: 'pixelated' }}
+                    />
+                    {/* Cut lines extended into waveform strip */}
+                    {cutPoints.map((cp, i) => (
+                        <div
+                            key={`wf-cut-${i}`}
+                            className="absolute top-0 bottom-0 w-px bg-white/60 pointer-events-none"
+                            style={{ left: `${(cp / duration) * 100}%` }}
+                        />
+                    ))}
+                    {/* Playhead */}
+                    <div
+                        className="absolute top-0 bottom-0 w-px bg-yellow-400 pointer-events-none"
+                        style={{ left: `${(currentTime / duration) * 100}%` }}
+                    />
+                    {/* Hover line */}
+                    {hoverTime !== null && (
+                        <div
+                            className="absolute top-0 bottom-0 w-px bg-white/40 pointer-events-none"
+                            style={{ left: `${(hoverTime / duration) * 100}%` }}
+                        />
+                    )}
+                    {/* Label */}
+                    <span className="absolute top-1 left-2 text-[9px] font-mono text-white/40 pointer-events-none select-none">
+                        AUDIO
+                    </span>
+                </div>
+            )}
 
             {/* Scene table */}
             {allCuts.length > 1 && (
@@ -1058,7 +1198,7 @@ function SceneTimeline({
 }
 
 function AnalyzeStepContent() {
-    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, isAnalyzing, setIsAnalyzing, script, setScriptEntries, updateScriptEntry, setScriptAutoPopulated, shouldAutoAnalyze, setShouldAutoAnalyze, setOutroConfig, videoHasAudio, setVideoHasAudio, setSuggestedTextColor, setSuggestedOutroTextColor, detectedVoiceoverLanguage, setDetectedVoiceoverLanguage, setOutroSegment, setManualOutroId, scriptEntries, cutPoints, setCutPoints, audioFile, setAudioFile } = useAppStore();
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -1290,6 +1430,7 @@ function AnalyzeStepContent() {
             const silentFile = new File([silentBlob], 'silent.mp4', { type: 'video/mp4' });
             const audioFile = new File([audioBlob], 'audio.mp3', { type: 'audio/mpeg' });
             console.log(`Silent video: ${(silentFile.size / 1024 / 1024).toFixed(2)} MB, Audio: ${(audioFile.size / 1024).toFixed(0)} KB`);
+            setAudioFile(audioFile);
             setProgress(20);
 
             // Step 2: Upload both processed files + original to Supabase in parallel
@@ -1576,6 +1717,7 @@ function AnalyzeStepContent() {
                                 fps={video?.frameRate}
                                 transcripts={scriptEntries.map(e => e?.voiceover || '')}
                                 hasAudio={videoHasAudio ?? undefined}
+                                audioFile={audioFile ?? undefined}
                             />
 
 
@@ -1584,7 +1726,7 @@ function AnalyzeStepContent() {
 
                     {/* Script indicator banner */}
                     {script && (
-                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/10 border border-primary/20">
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-100 border border-blue-200">
                             <FileText className="w-4 h-4 text-primary shrink-0" />
                             <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium text-primary">Script loaded: {script.name}</p>
@@ -1627,7 +1769,7 @@ function AnalyzeStepContent() {
                             <span className="text-sm font-medium">{allScenes.length} scenes</span>
                             {/* Voiceover detection badge — only shown after a no-script analysis */}
                             {!script && detectedVoiceover === true && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-600 border border-green-300">
                                     <Mic className="w-3 h-3 shrink-0" />
                                     <span>
                                         Voiceover detected
@@ -1638,7 +1780,7 @@ function AnalyzeStepContent() {
                                 </span>
                             )}
                             {!script && detectedVoiceover === false && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300">
                                     <Type className="w-3 h-3" /> No voiceover — text extracted
                                 </span>
                             )}
@@ -1730,8 +1872,8 @@ function AnalyzeStepContent() {
                                             className={cn(
                                                 'text-xs px-1.5 py-0.5 rounded border transition-colors shrink-0',
                                                 segments[i]?.isOutro
-                                                    ? 'border-amber-500 text-amber-400 bg-amber-500/10 cursor-default'
-                                                    : 'border-border text-muted-foreground hover:border-amber-500/50 hover:text-amber-400'
+                                                    ? 'border-amber-500 text-amber-700 bg-amber-100 cursor-default'
+                                                    : 'border-border text-muted-foreground hover:border-amber-500/50 hover:text-amber-700'
                                             )}
                                             title={segments[i]?.isOutro ? 'This is the Outro' : 'Set as Outro'}
                                         >
@@ -1745,7 +1887,7 @@ function AnalyzeStepContent() {
                                                     // Last segment: remove the cut before it (merges into previous)
                                                     handleRemoveCut(i < cutPoints.length ? i : i - 1);
                                                 }}
-                                                className="p-1 text-muted-foreground hover:text-red-400 shrink-0"
+                                                className="p-1 text-muted-foreground hover:text-red-600 shrink-0"
                                                 title={i === cutPoints.length ? "Merge with previous scene" : "Remove this cut point"}
                                             >
                                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1762,7 +1904,7 @@ function AnalyzeStepContent() {
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <div className="flex items-center gap-1.5">
-                                                        <Mic className="w-3 h-3 text-green-400 shrink-0" />
+                                                        <Mic className="w-3 h-3 text-green-600 shrink-0" />
                                                         <span className="text-[10px] text-muted-foreground">Editing voiceover</span>
                                                     </div>
                                                     <textarea
@@ -1780,12 +1922,12 @@ function AnalyzeStepContent() {
                                                                 setEditingVoiceoverValue('');
                                                             }
                                                         }}
-                                                        className="w-full text-xs text-green-400 bg-surface border border-green-400/30 rounded p-1.5 resize-none focus:outline-none focus:border-green-400/60"
+                                                        className="w-full text-xs text-green-700 bg-green-50 border border-green-300 rounded p-1.5 resize-none focus:outline-none focus:border-green-500"
                                                         rows={3}
                                                     />
                                                     <div className="flex gap-1.5">
                                                         <button
-                                                            className="text-[10px] px-2 py-0.5 rounded bg-green-500/20 border border-green-400/50 text-green-400 hover:bg-green-500/30 transition-colors"
+                                                            className="text-[10px] px-2 py-0.5 rounded bg-green-100 border border-green-300 text-green-700 hover:bg-green-200 transition-colors"
                                                             onClick={() => {
                                                                 updateScriptEntry(i, { voiceover: editingVoiceoverValue.trim() });
                                                                 setEditingVoiceoverIdx(null);
@@ -1795,7 +1937,7 @@ function AnalyzeStepContent() {
                                                             Save
                                                         </button>
                                                         <button
-                                                            className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/50 transition-colors"
+                                                            className="text-[10px] px-2 py-0.5 rounded border border-border text-muted-foreground hover:text-red-600 hover:border-red-400/50 transition-colors"
                                                             onClick={() => {
                                                                 setEditingVoiceoverIdx(null);
                                                                 setEditingVoiceoverValue('');
@@ -1832,12 +1974,12 @@ function AnalyzeStepContent() {
                                                     }}
                                                 >
                                                     <GripVertical className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0 mt-0.5 transition-opacity" />
-                                                    <Mic className="w-3 h-3 text-green-400 shrink-0 mt-0.5" />
-                                                    <p className="text-xs text-green-400 leading-relaxed flex-1">
+                                                    <Mic className="w-3 h-3 text-green-600 shrink-0 mt-0.5" />
+                                                    <p className="text-xs text-green-600 leading-relaxed flex-1">
                                                         &ldquo;{scriptEntry?.voiceover}&rdquo;
                                                     </p>
                                                     <button
-                                                        className="opacity-0 group-hover:opacity-60 shrink-0 ml-1 hover:opacity-100 transition-opacity text-muted-foreground hover:text-green-400"
+                                                        className="opacity-0 group-hover:opacity-60 shrink-0 ml-1 hover:opacity-100 transition-opacity text-muted-foreground hover:text-green-600"
                                                         title="Edit voiceover"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -1851,7 +1993,7 @@ function AnalyzeStepContent() {
                                             ) : (
                                                 /* ── No voiceover yet — show add button ── */
                                                 <button
-                                                    className="flex items-center gap-1.5 pl-2 text-[10px] text-muted-foreground hover:text-green-400 transition-colors"
+                                                    className="flex items-center gap-1.5 pl-2 text-[10px] text-muted-foreground hover:text-green-600 transition-colors"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         setEditingVoiceoverIdx(i);
@@ -1871,7 +2013,7 @@ function AnalyzeStepContent() {
                                                 >
                                                     <span className="text-[10px] text-muted-foreground">Place dragged text:</span>
                                                     <button
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-400/50 text-green-400 hover:bg-green-400/10 transition-colors"
+                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors"
                                                         onClick={() => {
                                                             const { fromIdx, toIdx } = pendingDrop;
                                                             const fromText = scriptEntries[fromIdx]?.voiceover ?? '';
@@ -1884,7 +2026,7 @@ function AnalyzeStepContent() {
                                                         Before
                                                     </button>
                                                     <button
-                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-400/50 text-green-400 hover:bg-green-400/10 transition-colors"
+                                                        className="text-[10px] px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-100 transition-colors"
                                                         onClick={() => {
                                                             const { fromIdx, toIdx } = pendingDrop;
                                                             const fromText = scriptEntries[fromIdx]?.voiceover ?? '';
@@ -1897,7 +2039,7 @@ function AnalyzeStepContent() {
                                                         After
                                                     </button>
                                                     <button
-                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/50 transition-colors ml-auto"
+                                                        className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-red-600 hover:border-red-400/50 transition-colors ml-auto"
                                                         onClick={() => setPendingDrop(null)}
                                                         title="Cancel"
                                                     >
@@ -1950,6 +2092,7 @@ interface TextLayerOverlay {
     positionY: number;                          // px in native video resolution
     positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
+    fontSizeCap?: number;
     fontWeight?: number; // defaults to 800 if not set
     textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta'; // used to clamp auto-fit range; 'disclaimer' = 24px default, 16px if >3 lines, no clamp; 'cta' = ExtraBold 56–72px
     maxLines?: number; // override for per-layer line limit (0 = unlimited)
@@ -2035,6 +2178,7 @@ type ExportOverlayLayer = {
     positionY: number;
     positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
+    fontSizeCap?: number;
     fontWeight?: number;
     color: string;
     backgroundColor?: string;
@@ -2150,6 +2294,7 @@ function buildOverlayRenderCacheKey(
         layer.positionY,
         layer.positionAnchor ?? 'middle',
         layer.fontSize ?? 0,
+        layer.fontSizeCap ?? '',
         layer.fontWeight ?? 800,
         layer.color ?? '',
         layer.backgroundColor ?? '',
@@ -2214,19 +2359,7 @@ async function renderLayerOverlayToPng(
             return testDisclaimer(24) > 3 ? 16 : 24;
         }
 
-        const byStyle = layer.textStyle === 'headline'
-            ? {
-                min: 64,
-                max: Math.max(64, Math.round(layer.fontSize || 128)),
-            }
-            : layer.textStyle === 'body'
-                ? {
-                    min: 24,
-                    max: Math.max(24, Math.round(layer.fontSize || 32)),
-                }
-                : layer.textStyle === 'cta'
-                    ? { min: 56, max: 72 }
-                    : { min: Math.max(8, Math.round(layer.fontSize || 24)), max: Math.max(8, Math.round(layer.fontSize || 24)) };
+        const byStyle = getAutoFitBounds(layer.textStyle, layer.fontSize, layer.fontSizeCap);
 
         let lo = byStyle.min;
         let hi = byStyle.max;
@@ -2350,6 +2483,28 @@ async function renderLayerOverlayCached(
 const DEFAULT_FONT_STACK = 'Inter, sans-serif';
 const ARABIC_FONT_STACK = '"Noto Sans Arabic", sans-serif';
 const ARABIC_BOLD_WEIGHT = 800;
+
+function getAutoFitBounds(
+    textStyle: 'headline' | 'body' | 'disclaimer' | 'cta' | undefined,
+    fontSize: number,
+    fontSizeCap?: number
+): { min: number; max: number } {
+    const resolvedCap = Number.isFinite(fontSizeCap) ? Math.round(fontSizeCap as number) : undefined;
+    if (textStyle === 'headline') {
+        const min = 64;
+        return { min, max: Math.max(min, resolvedCap ?? 128) };
+    }
+    if (textStyle === 'body') {
+        const min = 24;
+        return { min, max: Math.max(min, resolvedCap ?? 32) };
+    }
+    if (textStyle === 'cta') {
+        const min = 56;
+        return { min, max: Math.max(min, resolvedCap ?? 72) };
+    }
+    const fixed = Math.max(8, Math.round(fontSize || 24));
+    return { min: fixed, max: fixed };
+}
 
 function hasArabicScript(text: string): boolean {
     return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text);
@@ -2890,6 +3045,22 @@ function SceneVideoPlayer({
         setCurrentTime(snapped);
     }, [endTime, FRAME, snapToFrame, stopRVFC]);
 
+    const stepBack = useCallback(() => {
+        const video = videoRef.current;
+        if (!video || isPlaying) return;
+        const snapped = snapToFrame(Math.max(startTime, currentTime - FRAME));
+        video.currentTime = snapped;
+        setCurrentTime(snapped);
+    }, [isPlaying, startTime, currentTime, FRAME, snapToFrame]);
+
+    const stepForward = useCallback(() => {
+        const video = videoRef.current;
+        if (!video || isPlaying) return;
+        const snapped = snapToFrame(Math.min(endTime - FRAME, currentTime + FRAME));
+        video.currentTime = snapped;
+        setCurrentTime(snapped);
+    }, [isPlaying, endTime, currentTime, FRAME, snapToFrame]);
+
     // Shared helper: resolve time from a pointer X position over the progress bar
     const timeFromPointerX = useCallback((clientX: number): number => {
         const bar = progressBarRef.current;
@@ -2950,6 +3121,57 @@ function SceneVideoPlayer({
         };
     }, [stopRVFC]);
 
+    // ─── Hover thumbnail state ─────────────────────────────────────────────────
+    const [hoverThumb, setHoverThumb] = useState<{ url: string; time: number; x: number } | null>(null);
+    const hoverThumbTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleProgressHoverMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        if (isDraggingRef.current || !videoFile) return;
+        const bar = progressBarRef.current;
+        if (!bar) return;
+        const rect = bar.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const hoverTime = snapToFrame(startTime + pct * duration);
+        // X position clamped so the tooltip card stays within bar bounds
+        const cardHalfW = 60;
+        const clampedX = Math.max(cardHalfW, Math.min(rect.width - cardHalfW, e.clientX - rect.left));
+
+        if (hoverThumbTimeoutRef.current) clearTimeout(hoverThumbTimeoutRef.current);
+        hoverThumbTimeoutRef.current = setTimeout(async () => {
+            try {
+                const result = await extractFrame({ file: videoFile, fileId: videoFile.name + videoFile.size, timestamp: hoverTime, fps: FPS });
+                setHoverThumb({ url: result.url, time: hoverTime, x: clampedX });
+            } catch { /* ignore */ }
+        }, 60);
+    }, [videoFile, snapToFrame, startTime, duration, FPS]);
+
+    const handleProgressHoverLeave = useCallback(() => {
+        if (hoverThumbTimeoutRef.current) clearTimeout(hoverThumbTimeoutRef.current);
+        setHoverThumb(null);
+    }, []);
+
+    // Pre-warm thumbnail cache: extract one frame per second of the scene
+    useEffect(() => {
+        if (!videoFile) return;
+        let cancelled = false;
+        const fileId = videoFile.name + videoFile.size;
+        (async () => {
+            const step = Math.max(1, Math.round(FPS)); // every 1 second
+            const count = Math.ceil(duration * FPS / step);
+            for (let i = 0; i <= count && !cancelled; i++) {
+                const t = snapToFrame(Math.min(endTime - FRAME, startTime + (i * step) / FPS));
+                try { await extractFrame({ file: videoFile, fileId, timestamp: t, fps: FPS }); } catch { /* ignore */ }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [videoFile, startTime, endTime, duration, FPS, FRAME, snapToFrame]);
+
+    // Keyboard shortcuts: ArrowLeft / ArrowRight for frame stepping
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); stepBack(); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); stepForward(); }
+    }, [stepBack, stepForward]);
+
     // Format relative frame within scene
     const formatRelFrame = (seconds: number) => `F${Math.round(seconds * FPS)}`;
 
@@ -2985,6 +3207,7 @@ function SceneVideoPlayer({
                 positionY: layer.positionY,
                 positionAnchor: layer.positionAnchor ?? 'middle',
                 fontSize: layer.fontSize,
+                fontSizeCap: layer.fontSizeCap,
                 fontWeight: layer.fontWeight ?? 800,
                 color: layer.color,
                 backgroundColor: layer.backgroundColor,
@@ -3039,6 +3262,9 @@ function SceneVideoPlayer({
         <div
             ref={containerRef}
             className="flex justify-center"
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            style={{ outline: 'none' }}
         >
             {/* Video Container - uses actual input video aspect ratio */}
             <div
@@ -3235,15 +3461,7 @@ function SceneVideoPlayer({
                                             content={layer.content}
                                             defaultColor={layer.color}
                                             maxFontSize={Math.max(12, Math.round(
-                                                (
-                                                    layer.textStyle === 'headline'
-                                                        ? Math.max(64, Math.round(layer.fontSize || 128))
-                                                        : layer.textStyle === 'body'
-                                                            ? Math.max(24, Math.round(layer.fontSize || 32))
-                                                            : layer.textStyle === 'cta'
-                                                                ? 72
-                                                                : layer.fontSize
-                                                )
+                                                getAutoFitBounds(layer.textStyle, layer.fontSize, layer.fontSizeCap).max
                                                 * (previewShortSide / 1080)
                                             ))}
                                             minFontSize={Math.max(6, Math.round(
@@ -3419,7 +3637,7 @@ function SceneVideoPlayer({
                                         }}
                                     />
                                     <div
-                                        className="absolute text-[6px] font-mono text-green-400/90 px-1"
+                                        className="absolute text-[6px] font-mono text-green-600/90 px-1"
                                         style={{
                                             bottom: `${contentBottomH + 0.3}%`,
                                             ...(contentBottomIsRight ? { right: '0.5%' } : { left: '0.5%' }),
@@ -3443,7 +3661,7 @@ function SceneVideoPlayer({
                                 }}
                             />
                             <div
-                                className="absolute text-[6px] font-mono text-yellow-400/90 px-1"
+                                className="absolute text-[6px] font-mono text-yellow-600/90 px-1"
                                 style={{ bottom: `${noteTop + 0.3}%`, left: `${noteLeft + 0.5}%` }}
                             >
                                 Note · {z.noteWidth ?? ''}×{z.noteHeight}px · {z.noteBottom}px from bottom
@@ -3476,20 +3694,47 @@ function SceneVideoPlayer({
                 {/* Controls Bar */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
                     {/* Progress Bar — supports click + drag */}
-                    <div
-                        ref={progressBarRef}
-                        className="h-3 flex items-center mb-2 cursor-pointer group touch-none"
-                        onPointerDown={handleProgressPointerDown}
-                        onPointerMove={handleProgressPointerMove}
-                        onPointerUp={handleProgressPointerUp}
-                        onPointerCancel={handleProgressPointerUp}
-                    >
-                        <div className="relative w-full h-1.5 bg-white/30 rounded-full">
+                    {/* Progress bar with hover thumbnail */}
+                    <div className="relative mb-2">
+                        {/* Hover thumbnail card */}
+                        {hoverThumb && (
                             <div
-                                className="h-full bg-primary rounded-full relative"
-                                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                className="absolute bottom-full mb-2 pointer-events-none z-50"
+                                style={{ left: `${hoverThumb.x}px`, transform: 'translateX(-50%)' }}
                             >
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow transition-transform group-hover:scale-125" />
+                                <div className="bg-black/90 rounded-lg overflow-hidden shadow-xl border border-white/20 flex flex-col items-center">
+                                    <img
+                                        src={hoverThumb.url}
+                                        alt="frame preview"
+                                        className="block"
+                                        style={{ width: '120px', height: 'auto', display: 'block' }}
+                                    />
+                                    <span className="text-white text-[10px] font-mono py-1">
+                                        {formatRelFrame(hoverThumb.time - startTime)}
+                                    </span>
+                                </div>
+                                {/* Arrow */}
+                                <div className="flex justify-center">
+                                    <div className="w-0 h-0" style={{ borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '5px solid rgba(0,0,0,0.9)' }} />
+                                </div>
+                            </div>
+                        )}
+                        <div
+                            ref={progressBarRef}
+                            className="h-3 flex items-center cursor-pointer group touch-none"
+                            onPointerDown={handleProgressPointerDown}
+                            onPointerMove={(e) => { handleProgressPointerMove(e); handleProgressHoverMove(e); }}
+                            onPointerUp={handleProgressPointerUp}
+                            onPointerCancel={handleProgressPointerUp}
+                            onPointerLeave={handleProgressHoverLeave}
+                        >
+                            <div className="relative w-full h-1.5 bg-white/30 rounded-full">
+                                <div
+                                    className="h-full bg-primary rounded-full relative"
+                                    style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                                >
+                                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow transition-transform group-hover:scale-125" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3506,6 +3751,14 @@ function SceneVideoPlayer({
                                 <SkipBack className="w-4 h-4" />
                             </button>
                             <button
+                                onClick={stepBack}
+                                className="p-1.5 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30"
+                                title="Previous frame (←)"
+                                disabled={isPlaying}
+                            >
+                                <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <button
                                 onClick={togglePlay}
                                 className="p-1.5 rounded-full hover:bg-white/20 transition-colors"
                             >
@@ -3514,6 +3767,14 @@ function SceneVideoPlayer({
                                 ) : (
                                     <Play className="w-4 h-4" />
                                 )}
+                            </button>
+                            <button
+                                onClick={stepForward}
+                                className="p-1.5 rounded-full hover:bg-white/20 transition-colors disabled:opacity-30"
+                                title="Next frame (→)"
+                                disabled={isPlaying}
+                            >
+                                <ChevronRight className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={goToLastFrame}
@@ -3641,6 +3902,7 @@ function EditTextStepContent() {
                     positionAnchor: mainPos.anchor,
                     fontFamily: "Inter",
                     fontSize,
+                    fontSizeCap: isOutro ? undefined : 128,
                     fontWeight: isOutro ? undefined : 800,
                     textStyle: isOutro ? undefined : 'headline',
                     color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
@@ -3692,6 +3954,7 @@ function EditTextStepContent() {
                 positionAnchor: defaultPos.anchor,
                 fontFamily: "Inter",
                 fontSize: 128,
+                fontSizeCap: 128,
                 fontWeight: 800,
                 textStyle: 'headline',
                 color: suggestedTextColor,
@@ -3753,6 +4016,7 @@ function EditTextStepContent() {
                 positionAnchor: mainPos2.anchor,
                 fontFamily: "Inter",
                 fontSize,
+                fontSizeCap: isOutro ? undefined : 128,
                 fontWeight: isOutro ? undefined : 800,
                 textStyle: isOutro ? undefined : 'headline' as const,
                 color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
@@ -3813,6 +4077,7 @@ function EditTextStepContent() {
         positionY: layer.positionY,
         positionAnchor: layer.positionAnchor,
         fontSize: layer.fontSize,
+        fontSizeCap: layer.fontSizeCap,
         fontWeight: layer.fontWeight ?? 800,
         textStyle: layer.textStyle,
         color: layer.color,
@@ -3858,8 +4123,8 @@ function EditTextStepContent() {
                                 className={cn(
                                     "flex items-center gap-1 text-xs px-2 py-1 rounded border transition-colors",
                                     showSafeArea
-                                        ? "border-red-400/60 text-red-400 bg-red-400/10"
-                                        : "border-border text-muted-foreground hover:border-red-400/40 hover:text-red-400"
+                                        ? "border-red-400 text-red-600 bg-red-100"
+                                        : "border-border text-muted-foreground hover:border-red-300 hover:text-red-600"
                                 )}
                                 title="Toggle safe area overlay"
                             >
@@ -3942,10 +4207,10 @@ function EditTextStepContent() {
 
             {/* Outro scene indicator */}
             {segments[activeSegment]?.isOutro && segments.length > 0 && (
-                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300">
                     <span className="text-base">🎬</span>
                     <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-amber-400">Outro Scene — CTA Text</p>
+                        <p className="text-xs font-semibold text-amber-700">Outro Scene — CTA Text</p>
                         <p className="text-xs text-muted-foreground">CTA centered horizontally • 945px from top (49.2%) • 40px font • animation starts at 2s</p>
                     </div>
                 </div>
@@ -4034,9 +4299,10 @@ function EditTextStepContent() {
                                     const presetSizes = effectiveStyle === 'headline'
                                         ? { max: 128, medium: 96, min: 64 }
                                         : { max: 32, medium: 28, min: 24 };
-                                    const activePreset = layer.fontSize === presetSizes.medium
+                                    const activeSizeCap = Math.round(layer.fontSizeCap ?? presetSizes.max);
+                                    const activePreset = activeSizeCap === presetSizes.medium
                                         ? 'medium'
-                                        : layer.fontSize === presetSizes.min
+                                        : activeSizeCap === presetSizes.min
                                             ? 'min'
                                             : 'max';
                                     return (
@@ -4059,6 +4325,7 @@ function EditTextStepContent() {
                                                             onChange={() => updateTextLayer(currentSegment!.id, layer.id, {
                                                                 textStyle: 'headline',
                                                                 fontSize: 128,
+                                                                fontSizeCap: 128,
                                                                 fontWeight: 800,
                                                             })}
                                                             className="accent-primary"
@@ -4080,6 +4347,7 @@ function EditTextStepContent() {
                                                             onChange={() => updateTextLayer(currentSegment!.id, layer.id, {
                                                                 textStyle: 'body',
                                                                 fontSize: 32,
+                                                                fontSizeCap: 32,
                                                                 fontWeight: 400,
                                                             })}
                                                             className="accent-primary"
@@ -4108,7 +4376,10 @@ function EditTextStepContent() {
                                                         <button
                                                             key={preset.key}
                                                             type="button"
-                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, { fontSize: preset.size })}
+                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, {
+                                                                fontSize: preset.size,
+                                                                fontSizeCap: preset.size,
+                                                            })}
                                                             className={cn(
                                                                 "px-2 py-2 rounded-lg border text-left transition-all",
                                                                 activePreset === preset.key
@@ -4133,8 +4404,8 @@ function EditTextStepContent() {
                                                             className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
                                                             title={`Auto-fit: ${
                                                                 effectiveStyle === 'headline'
-                                                                    ? `64–${Math.max(64, Math.round(layer.fontSize || 128))}`
-                                                                    : `24–${Math.max(24, Math.round(layer.fontSize || 32))}`
+                                                                    ? `64–${Math.max(64, Math.round(layer.fontSizeCap ?? 128))}`
+                                                                    : `24–${Math.max(24, Math.round(layer.fontSizeCap ?? 32))}`
                                                             }px range`}
                                                         >
                                                             {layer.fontSize}px <span className="text-[9px] opacity-60">auto</span>
@@ -4292,7 +4563,7 @@ function EditTextStepContent() {
                                 <div className="flex justify-end">
                                     <button
                                         onClick={() => handleDeleteLayer(layer.id)}
-                                        className="text-red-400 hover:text-red-300 p-1 flex items-center gap-1 text-xs"
+                                        className="text-red-600 hover:text-red-800 p-1 flex items-center gap-1 text-xs"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                         <span>Delete</span>
@@ -4312,7 +4583,7 @@ function EditTextStepContent() {
                                         e.stopPropagation();
                                         handleDeleteLayer(layer.id);
                                     }}
-                                    className="text-muted-foreground hover:text-red-400 p-1 shrink-0"
+                                    className="text-muted-foreground hover:text-red-600 p-1 shrink-0"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -4331,7 +4602,7 @@ function EditTextStepContent() {
                         <Button
                             variant="outline"
                             size="sm"
-                            className="w-full text-red-400 border-red-400/30 hover:bg-red-400/10 hover:border-red-400/50"
+                            className="w-full text-red-600 border-red-300 hover:bg-red-100 hover:border-red-400"
                             onClick={() => {
                                 if (window.confirm('Remove all text overlays from all scenes?')) {
                                     setSegments(segments.map(seg => ({ ...seg, textLayers: [] })));
@@ -4346,7 +4617,7 @@ function EditTextStepContent() {
                         <Button
                             variant="outline"
                             size="sm"
-                            className="w-full text-purple-400 border-purple-400/30 hover:bg-purple-400/10 hover:border-purple-400/50"
+                            className="w-full text-purple-600 border-purple-300 hover:bg-purple-100 hover:border-purple-400"
                             disabled={isCopywriting}
                             onClick={async () => {
                                 const allOverlays = segments
@@ -4398,7 +4669,7 @@ function EditTextStepContent() {
 
             {/* Error banner */}
             {copywriteError && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 border border-red-300 text-xs text-red-700">
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{copywriteError}</span>
                     <button onClick={() => setCopywriteError(null)} className="ml-auto">
@@ -4452,7 +4723,7 @@ function reapplyRedMarkup(translated: string, translatedRedWord: string | null):
 function TranslateStepContent() {
     const {
         selectedLanguages, toggleLanguage, setCurrentStep,
-        segments, video, translations, setTranslations, updateTranslation, isTranslating, setIsTranslating,
+        segments, video, translations, setTranslations, updateTranslation, isTranslatingText, setIsTranslatingText,
         detectedVoiceoverLanguage, outroConfig, setOutroConfig,
     } = useAppStore();
 
@@ -4479,6 +4750,40 @@ function TranslateStepContent() {
     // Collect all text layers across all segments, excluding the outro which has its own
     // dedicated translation flow via outroConfig.translations in OutroStepContent.
     const allLayers = segments.filter(seg => !seg.isOutro).flatMap(seg => seg.textLayers.map(l => ({ ...l, segmentId: seg.id })));
+
+    const normaliseCandidateForLayout = (text: string, langCode: string): string => {
+        // Arabic copywrite can include NBSP groups that alter wrapping. Normalize to regular
+        // spaces before measuring/applying so safe-zone layout remains stable.
+        if (langCode.toUpperCase() === 'AR') return text.replace(/\u00A0/g, ' ');
+        return text;
+    };
+
+    const measureOverlayLayout = (
+        text: string,
+        layer: typeof allLayers[number],
+        fontSize: number,
+    ): { lineCount: number; maxLineWidth: number } | null => {
+        if (!video) return null;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return null;
+
+        const vW = Math.max(1, Math.round(video.width || 1080));
+        const bounds = getHorizontalBounds(layer.positionX, vW);
+        const maxWidth = Math.max(1, bounds.right - bounds.left);
+        const isArabicText = hasArabicScript(text);
+        const fontFamily = isArabicText ? ARABIC_FONT_STACK : DEFAULT_FONT_STACK;
+        const fontWeight = isArabicText ? ARABIC_BOLD_WEIGHT : (layer.fontWeight ?? 800);
+        const maxLines = layer.textStyle === 'disclaimer' ? 0 : 2;
+
+        ctx.font = `${fontWeight} ${Math.max(8, Math.round(fontSize))}px ${fontFamily}`;
+        const lines = wrapRichTokens(ctx, tokenizeRichParts(text, layer.color || '#ffffff'), maxWidth, maxLines);
+        const lineWidths = lines.map((line) => ctx.measureText(line.map((t) => t.text).join('')).width);
+        return {
+            lineCount: lines.length,
+            maxLineWidth: lineWidths.length > 0 ? Math.max(...lineWidths) : 0,
+        };
+    };
 
     // Run Gemini markup + \u00A0 processing for a single language.
     // Safe to call concurrently for multiple languages — no shared lock.
@@ -4521,7 +4826,47 @@ function TranslateStepContent() {
             const results = await copywriteTranslateMarkup(pairs, langCode);
 
             results.forEach(({ layerId, marked }) => {
-                updateTranslation(layerId, langCode as import('@/types').LanguageCode, marked);
+                const store = useAppStore.getState();
+                const lang = langCode as import('@/types').LanguageCode;
+                const layer = allLayers.find((l) => l.id === layerId);
+                const existing = store.translations.get(layerId) ?? [];
+                const current = existing.find((t) => t.languageCode === lang);
+                const filtered = existing.filter((t) => t.languageCode !== lang);
+                const baselineText = current?.translatedContent ?? layer?.content ?? marked;
+                const baselineFontSize = current?.fontSizeOverride ?? layer?.fontSize ?? 24;
+
+                // Keep copywrite output locked to the original safe-zone layout for all
+                // languages: accept only when wrapping stays within the original envelope.
+                let finalContent = marked;
+                if (layer) {
+                    const normalizedCandidate = normaliseCandidateForLayout(marked, langCode);
+                    const baselineMetrics = measureOverlayLayout(baselineText, layer, baselineFontSize);
+                    const candidateMetrics = measureOverlayLayout(normalizedCandidate, layer, baselineFontSize);
+
+                    if (baselineMetrics && candidateMetrics) {
+                        const keepsLineCount = candidateMetrics.lineCount <= baselineMetrics.lineCount;
+                        const keepsWidthEnvelope = candidateMetrics.maxLineWidth <= baselineMetrics.maxLineWidth + 6;
+                        finalContent = (keepsLineCount && keepsWidthEnvelope) ? normalizedCandidate : baselineText;
+                    } else {
+                        finalContent = normalizedCandidate;
+                    }
+                }
+
+                setTranslations(layerId, [
+                    ...filtered,
+                    {
+                        id: current?.id ?? `tr-${layerId}-${lang}`,
+                        textLayerId: layerId,
+                        languageCode: lang,
+                        translatedContent: finalContent,
+                        positionXOverride: current?.positionXOverride ?? layer?.positionX,
+                        positionYOverride: current?.positionYOverride ?? layer?.positionY,
+                        positionAnchorOverride: current?.positionAnchorOverride ?? layer?.positionAnchor,
+                        fontSizeOverride: current?.fontSizeOverride ?? layer?.fontSize,
+                        audioPath: current?.audioPath,
+                        audioBlobUrl: current?.audioBlobUrl,
+                    },
+                ]);
             });
 
             setHighlightStatus(prev => ({ ...prev, [langCode]: 'done' }));
@@ -4533,7 +4878,7 @@ function TranslateStepContent() {
 
     const startTranslation = async () => {
         if (selectedLanguages.length === 0 || allLayers.length === 0) return;
-        setIsTranslating(true);
+        setIsTranslatingText(true);
         setHighlightStatus({});
         setHighlightError(null);
 
@@ -4576,6 +4921,10 @@ function TranslateStepContent() {
                     textLayerId: layer.id,
                     languageCode: textSrcLangCode,
                     translatedContent: layer.content,
+                    positionXOverride: layer.positionX,
+                    positionYOverride: layer.positionY,
+                    positionAnchorOverride: layer.positionAnchor,
+                    fontSizeOverride: layer.fontSize,
                 }]);
             });
             setTranslateProgress(prev => ({ ...prev, [textSrcLangCode]: 'done' }));
@@ -4613,6 +4962,10 @@ function TranslateStepContent() {
                             textLayerId: layer.id,
                             languageCode: lang as import('@/types').LanguageCode,
                             translatedContent: withColor,
+                            positionXOverride: layer.positionX,
+                            positionYOverride: layer.positionY,
+                            positionAnchorOverride: layer.positionAnchor,
+                            fontSizeOverride: layer.fontSize,
                         }]);
                     });
                     setTranslateProgress(prev => ({ ...prev, [lang]: 'done' }));
@@ -4652,7 +5005,7 @@ function TranslateStepContent() {
             alert(`Translation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
             targetLangs.forEach(l => setTranslateProgress(prev => ({ ...prev, [l]: 'error' })));
         } finally {
-            setIsTranslating(false);
+            setIsTranslatingText(false);
         }
     };
 
@@ -4664,10 +5017,10 @@ function TranslateStepContent() {
         return {
             id: layer.id,
             content: tr?.translatedContent ?? layer.content,
-            positionX: layer.positionX,
-            positionY: layer.positionY,
-            positionAnchor: layer.positionAnchor,
-            fontSize: layer.fontSize,
+            positionX: tr?.positionXOverride ?? layer.positionX,
+            positionY: tr?.positionYOverride ?? layer.positionY,
+            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor,
+            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             textStyle: layer.textStyle,
             color: layer.color,
@@ -4691,8 +5044,8 @@ function TranslateStepContent() {
                     return (
                         <button
                             key={lang.code}
-                            onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
-                            disabled={isTranslating || isSource}
+                            onClick={() => !isTranslatingText && !isSource && toggleLanguage(lang.code)}
+                            disabled={isTranslatingText || isSource}
                             title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                             className={cn(
                                 "flex items-center gap-2 p-3 rounded-lg border transition-all",
@@ -4701,7 +5054,7 @@ function TranslateStepContent() {
                                     : selectedLanguages.includes(lang.code)
                                         ? "border-primary bg-primary/10 text-primary"
                                         : "border-border hover:border-muted-foreground/50",
-                                isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                isTranslatingText && !isSource && "opacity-60 cursor-not-allowed"
                             )}
                         >
                             <span className="text-lg">{lang.flag}</span>
@@ -4740,9 +5093,9 @@ function TranslateStepContent() {
                         variant="gradient"
                         className="w-full"
                         onClick={startTranslation}
-                        disabled={isTranslating || selectedLanguages.length === 0}
+                        disabled={isTranslatingText || selectedLanguages.length === 0}
                     >
-                        {isTranslating ? (
+                        {isTranslatingText ? (
                             <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating...</>
                         ) : (
                             <>Translate to {selectedLanguages.filter(l => l !== textSrcLangCode).length} Language{selectedLanguages.filter(l => l !== textSrcLangCode).length !== 1 ? 's' : ''} <ArrowRight className="w-4 h-4 ml-2" /></>
@@ -4756,7 +5109,7 @@ function TranslateStepContent() {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Live Preview</span>
-                        <Button variant="outline" size="sm" onClick={startTranslation} disabled={isTranslating}>
+                        <Button variant="outline" size="sm" onClick={startTranslation} disabled={isTranslatingText}>
                             <Scan className="w-3.5 h-3.5 mr-1.5" />
                             Re-translate
                         </Button>
@@ -4796,13 +5149,13 @@ function TranslateStepContent() {
                         if (isSourceLang) return null;
                         const langStatus = highlightStatus[activePreviewLang] ?? 'idle';
                         if (langStatus === 'running') return (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-400">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-100 border border-purple-300/60 text-xs text-purple-700">
                                 <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
                                 <span>Applying copywrite highlights…</span>
                             </div>
                         );
                         if (langStatus === 'error') return (
-                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-100 border border-red-300 text-xs text-red-700">
                                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                                 <span>{highlightError ?? 'Failed to apply highlights'}</span>
                                 <button
@@ -4832,7 +5185,12 @@ function TranslateStepContent() {
                                         : "border-border hover:border-primary/50 text-muted-foreground"
                                 )}
                             >
-                                {seg.isOutro ? '🎬 Outro' : `Scene ${i + 1}`}
+                                <span className="inline-flex items-center gap-0.5">
+                                    <span>{seg.isOutro ? '🎬 Outro' : `Scene ${i + 1}`}</span>
+                                    {seg.textLayers.length > 0 && (
+                                        <span className="text-[10px] opacity-75">({seg.textLayers.length})</span>
+                                    )}
+                                </span>
                             </button>
                         ))}
                     </div>
@@ -4924,7 +5282,7 @@ function TranslateStepContent() {
                                                 </div>
                                             ) : (
                                                 <span className="text-primary font-medium block">
-                                                    <RichTextContent content={tr.translatedContent} defaultColor="#a78bfa" />
+                                                    <RichTextContent content={tr.translatedContent} defaultColor="#7c3aed" />
                                                 </span>
                                             )}
                                         </div>
@@ -4960,7 +5318,7 @@ function TranslateVoiceoverStepContent() {
         selectedLanguages, toggleLanguage, setCurrentStep,
         segments,
         scriptEntries, voiceoverTranslations, setVoiceoverTranslation,
-        isTranslating, setIsTranslating,
+        isTranslatingVoiceover, setIsTranslatingVoiceover,
         detectedVoiceoverLanguage,
     } = useAppStore();
 
@@ -4989,7 +5347,7 @@ function TranslateVoiceoverStepContent() {
             setCurrentStep('dub');
             return;
         }
-        setIsTranslating(true);
+        setIsTranslatingVoiceover(true);
         const initProgress: Record<string, 'pending' | 'translating' | 'done' | 'error'> = {};
         targetLangs.forEach(l => { initProgress[l] = 'pending'; });
         // Mark source language slot as done immediately (no translation needed)
@@ -5030,7 +5388,7 @@ function TranslateVoiceoverStepContent() {
             alert(`Voiceover translation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
             targetLangs.forEach(l => setTranslateProgress(prev => ({ ...prev, [l]: 'error' })));
         } finally {
-            setIsTranslating(false);
+            setIsTranslatingVoiceover(false);
         }
     };
 
@@ -5056,8 +5414,8 @@ function TranslateVoiceoverStepContent() {
                             return (
                                 <button
                                     key={lang.code}
-                                    onClick={() => !isTranslating && !isSource && toggleLanguage(lang.code)}
-                                    disabled={isTranslating || isSource}
+                                    onClick={() => !isTranslatingVoiceover && !isSource && toggleLanguage(lang.code)}
+                                    disabled={isTranslatingVoiceover || isSource}
                                     title={isSource ? 'Detected source language — cannot be a translation target' : undefined}
                                     className={cn(
                                         "flex items-center gap-2 p-3 rounded-lg border transition-all",
@@ -5066,7 +5424,7 @@ function TranslateVoiceoverStepContent() {
                                             : selectedLanguages.includes(lang.code)
                                                 ? "border-primary bg-primary/10 text-primary"
                                                 : "border-border hover:border-muted-foreground/50",
-                                        isTranslating && !isSource && "opacity-60 cursor-not-allowed"
+                                        isTranslatingVoiceover && !isSource && "opacity-60 cursor-not-allowed"
                                     )}
                                 >
                                     <span className="text-lg">{lang.flag}</span>
@@ -5083,8 +5441,8 @@ function TranslateVoiceoverStepContent() {
             )}
 
             {voiceoverScenes.length === 0 ? (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-center space-y-2">
-                    <p className="text-sm text-amber-400 font-medium">No voiceover detected</p>
+                <div className="rounded-lg border border-amber-300 bg-amber-100 p-4 text-center space-y-2">
+                    <p className="text-sm text-amber-700 font-medium">No voiceover detected</p>
                     <p className="text-xs text-muted-foreground">No spoken audio was found in the analyzed scenes. You can still dub the video manually in the next step.</p>
                     <Button variant="gradient" className="w-full mt-2" onClick={() => setCurrentStep('dub')}>
                         Continue to Dubbing
@@ -5099,9 +5457,9 @@ function TranslateVoiceoverStepContent() {
                             variant="outline"
                             className="w-full"
                             onClick={startTranslation}
-                            disabled={isTranslating || targetLangs.length === 0}
+                            disabled={isTranslatingVoiceover || targetLangs.length === 0}
                         >
-                            {isTranslating ? (
+                            {isTranslatingVoiceover ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating voiceover...</>
                             ) : (
                                 <><Languages className="w-4 h-4 mr-2" />Translate Voiceover ({targetLangs.length} {targetLangs.length === 1 ? 'language' : 'languages'})</>
@@ -5119,8 +5477,8 @@ function TranslateVoiceoverStepContent() {
                                     return (
                                         <div key={lang} className={cn(
                                             "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border",
-                                            status === 'done' ? "border-green-500/40 bg-green-500/10 text-green-400" :
-                                            status === 'error' ? "border-red-500/40 bg-red-500/10 text-red-400" :
+                                            status === 'done' ? "border-green-300 bg-green-100 text-green-700" :
+                                            status === 'error' ? "border-red-300 bg-red-100 text-red-700" :
                                             "border-border bg-surface text-muted-foreground"
                                         )}>
                                             <span>{langMeta?.flag}</span>
@@ -5137,9 +5495,9 @@ function TranslateVoiceoverStepContent() {
                                 size="sm"
                                 className="w-full"
                                 onClick={startTranslation}
-                                disabled={isTranslating || targetLangs.length === 0}
+                                disabled={isTranslatingVoiceover || targetLangs.length === 0}
                             >
-                                {isTranslating ? (
+                                {isTranslatingVoiceover ? (
                                     <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />Retranslating...</>
                                 ) : (
                                     <><RefreshCw className="w-3.5 h-3.5 mr-2" />Re-translate</>
@@ -5333,10 +5691,10 @@ function DubPreviewPlayer({
         return {
             id: layer.id,
             content: tr?.translatedContent ?? layer.content,
-            positionX: layer.positionX,
-            positionY: layer.positionY,
-            positionAnchor: layer.positionAnchor,
-            fontSize: layer.fontSize,
+            positionX: tr?.positionXOverride ?? layer.positionX,
+            positionY: tr?.positionYOverride ?? layer.positionY,
+            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor,
+            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
             fontWeight: layer.fontWeight ?? 800,
             textStyle: layer.textStyle,
             color: layer.color,
@@ -5742,7 +6100,7 @@ function DubStepContent() {
                                     ElevenLabs auto-detects the speaker, clones their voice, translates, and dubs. Uses ElevenLabs&apos; own AI voices — <strong>not</strong> the preset voices below.
                                 </p>
                                 <div className="flex flex-wrap gap-1.5 mt-2.5">
-                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">Fast</span>
+                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-600 border border-green-300">Fast</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Less Control</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Own Voices</span>
                                 </div>
@@ -5772,7 +6130,7 @@ function DubStepContent() {
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">Automated</span>
                                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">Preset Voices</span>
                                     {hasScript && (
-                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-green-400 border border-green-500/20">Script detected</span>
+                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-600 border border-green-300">Script detected</span>
                                     )}
                                 </div>
                             </div>
@@ -6208,10 +6566,10 @@ function OutroStepContent() {
     return (
         <div className="pt-4 space-y-4">
             {/* Info banner */}
-            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30">
+            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300">
                 <span className="text-base shrink-0">🎬</span>
                 <div className="min-w-0">
-                    <p className="text-xs font-semibold text-amber-400">Two text layers will be added to the Outro</p>
+                    <p className="text-xs font-semibold text-amber-700">Two text layers will be added to the Outro</p>
                     <p className="text-xs text-muted-foreground">Layer 1 — CTA (49% from top, 40px) • Layer 2 — Disclaimer (77% from top, 12px, Inter Regular)</p>
                 </div>
             </div>
@@ -6273,8 +6631,8 @@ function OutroStepContent() {
                 {/* Layer 2 — Disclaimer */}
                 <div className="p-3 rounded-lg bg-surface-elevated border border-border space-y-2">
                     <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0">
-                            <span className="text-[10px] font-bold text-amber-400">2</span>
+                        <div className="w-5 h-5 rounded-full bg-amber-200 flex items-center justify-center shrink-0">
+                            <span className="text-[10px] font-bold text-amber-700">2</span>
                         </div>
                         <label className="text-sm font-medium">Disclaimer Text</label>
                         <span className="text-xs text-muted-foreground ml-auto">77% from top • {resolvedDisclaimerFontSize}px auto • fade at 2s</span>
@@ -6310,9 +6668,9 @@ function OutroStepContent() {
             </div>
 
             {outroTranslateError && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/30">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <p className="text-xs text-red-400">{outroTranslateError}</p>
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-100 border border-red-300">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">{outroTranslateError}</p>
                 </div>
             )}
 
@@ -6416,10 +6774,11 @@ function ExportStepContent() {
                         }
                         return {
                             content,
-                            positionX: layer.positionX,
-                            positionY: layer.positionY,
-                            positionAnchor: layer.positionAnchor ?? 'middle',
-                            fontSize: layer.fontSize,
+                            positionX: tr?.positionXOverride ?? layer.positionX,
+                            positionY: tr?.positionYOverride ?? layer.positionY,
+                            positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor ?? 'middle',
+                            fontSize: tr?.fontSizeOverride ?? layer.fontSize,
+                            fontSizeCap: layer.fontSizeCap,
                             fontWeight: layer.fontWeight ?? 800,
                             color: layer.color,
                             backgroundColor: layer.backgroundColor ?? undefined,
@@ -6553,7 +6912,7 @@ function ExportStepContent() {
                             {isRendering && (
                                 <span className="text-xs text-muted-foreground ml-auto">{progress}%</span>
                             )}
-                            {error && <AlertCircle className="w-4 h-4 text-red-400 ml-auto" />}
+                            {error && <AlertCircle className="w-4 h-4 text-red-600 ml-auto" />}
                         </div>
 
                         {/* Progress bar */}
@@ -6565,7 +6924,7 @@ function ExportStepContent() {
 
                         {/* Error message */}
                         {error && (
-                            <p className="px-4 pb-2 text-xs text-red-400 leading-tight">{error}</p>
+                            <p className="px-4 pb-2 text-xs text-red-700 leading-tight">{error}</p>
                         )}
 
                         {/* Rendered video preview — the actual FFmpeg output, no sync hacks */}
@@ -6633,16 +6992,20 @@ function ExportStepContent() {
 // ============================================
 
 export default function Home() {
-    const { currentStep, video, segments, isAnalyzing, isTranslating, isGeneratingDubbing, isExporting } = useAppStore();
-    const [expandedSteps, setExpandedSteps] = useState<Set<AppStep>>(new Set(['upload']));
+    const {
+        currentStep,
+        video,
+        segments,
+        isAnalyzing,
+        isTranslatingText,
+        isTranslatingVoiceover,
+        isGeneratingDubbing,
+        isExporting,
+        setCurrentStep,
+    } = useAppStore();
 
     const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'translate-voiceover', 'dub', 'outro', 'export'];
     const currentIndex = stepOrder.indexOf(currentStep);
-
-    // Auto-expand current step
-    useEffect(() => {
-        setExpandedSteps(prev => new Set([...prev, currentStep]));
-    }, [currentStep]);
 
     const getStepStatus = (stepId: AppStep) => {
         const stepIndex = stepOrder.indexOf(stepId);
@@ -6657,30 +7020,15 @@ export default function Home() {
         })();
 
         const isActive = stepId === currentStep;
-        const isLocked = stepIndex > currentIndex + 1;
+        const isLocked = stepIndex > currentIndex;
         const isProcessing =
             (stepId === 'analyze' && isAnalyzing) ||
-            (stepId === 'translate' && isTranslating) ||
-            (stepId === 'translate-voiceover' && isTranslating) ||
+            (stepId === 'translate' && isTranslatingText) ||
+            (stepId === 'translate-voiceover' && isTranslatingVoiceover) ||
             (stepId === 'dub' && isGeneratingDubbing) ||
             (stepId === 'export' && isExporting);
 
         return { isCompleted, isActive, isLocked, isProcessing };
-    };
-
-    const toggleStep = (stepId: AppStep) => {
-        const { isLocked } = getStepStatus(stepId);
-        if (isLocked) return;
-
-        setExpandedSteps(prev => {
-            const next = new Set(prev);
-            if (next.has(stepId)) {
-                next.delete(stepId);
-            } else {
-                next.add(stepId);
-            }
-            return next;
-        });
     };
 
     const stepConfigs = [
@@ -6693,49 +7041,143 @@ export default function Home() {
         { id: 'outro' as AppStep, title: 'Outro', description: 'Add CTA and disclaimer', icon: <Film className="w-4 h-4" />, content: <StepErrorBoundary><OutroStepContent /></StepErrorBoundary> },
         { id: 'export' as AppStep, title: 'Export', description: 'Download all translated videos', icon: <Download className="w-4 h-4" />, content: <StepErrorBoundary><ExportStepContent /></StepErrorBoundary> },
     ];
+    const activeStep = stepConfigs.find((step) => step.id === currentStep) ?? stepConfigs[0];
+    const activeStatus = getStepStatus(activeStep.id);
+
+    // Direction-aware slide: positive = going forward, negative = going back
+    const prevIndexRef = useRef(currentIndex);
+    const direction = currentIndex >= prevIndexRef.current ? 1 : -1;
+    useEffect(() => { prevIndexRef.current = currentIndex; }, [currentIndex]);
+    const totalSteps = stepConfigs.length;
+    const currentStepNumber = Math.max(currentIndex + 1, 1);
+    const completedSteps = stepConfigs.filter((step) => getStepStatus(step.id).isCompleted).length;
+    const progressValue = Math.round((completedSteps / totalSteps) * 100);
 
     return (
-        <main className="min-h-screen bg-background">
+        <main className="min-h-screen">
             {/* Header */}
-            <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-lg">
-                <div className="max-w-6xl mx-auto px-4 py-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
-                            <Film className="w-5 h-5 text-white" />
+            <header className="sticky top-0 z-50 border-b border-white/50 glass-elevated">
+                <div className="max-w-7xl mx-auto px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 via-blue-500 to-purple-600 shadow-md shadow-blue-300/40 flex items-center justify-center">
+                                <img src={interpreterModeIcon} alt="Interpreter mode icon" className="w-5 h-5 invert" />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-lg">POD Translation</h1>
+                                <p className="text-xs text-muted-foreground">Video Automation Tool</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="font-bold text-lg">POD Translation</h1>
-                            <p className="text-xs text-muted-foreground">Video Automation Tool</p>
+                        <div className="w-full sm:w-[280px]">
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                                <span className="font-medium text-foreground">Step {currentStepNumber} of {totalSteps}</span>
+                                <span className="text-muted-foreground">{progressValue}%</span>
+                            </div>
+                            <Progress value={progressValue} />
                         </div>
                     </div>
                 </div>
             </header>
 
             {/* Main content */}
-            <div className="max-w-6xl mx-auto px-4 py-6">
-                <div className="space-y-3">
-                    {stepConfigs.map((step) => {
-                        const { isCompleted, isActive, isLocked, isProcessing } = getStepStatus(step.id);
-                        const isExpanded = expandedSteps.has(step.id);
+            <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+                    <aside className="glass rounded-2xl p-3 lg:sticky lg:top-24">
+                        <div className="mb-3 rounded-xl bg-white/40 p-3">
+                            <p className="text-xs font-medium text-foreground">
+                                Progress: {completedSteps} / {totalSteps} completed
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Current: {activeStep.title}
+                            </p>
+                        </div>
+                        <div className="space-y-2">
+                            {stepConfigs.map((step, index) => {
+                                const { isCompleted, isActive, isLocked, isProcessing } = getStepStatus(step.id);
+                                return (
+                                    <button
+                                        key={step.id}
+                                        type="button"
+                                        onClick={() => { if (!isLocked) setCurrentStep(step.id); }}
+                                        disabled={isLocked}
+                                        className={cn(
+                                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all",
+                                            isActive ? "bg-white/60 ring-1 ring-blue-300/50 shadow-sm" : "hover:bg-white/35",
+                                            isLocked && "opacity-60 cursor-not-allowed",
+                                        )}
+                                    >
+                                        <motion.div
+                                            className={cn(
+                                                "w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0",
+                                                isCompleted && "bg-gradient-to-br from-emerald-400 to-green-500 text-white shadow-sm",
+                                                isActive && !isCompleted && "bg-gradient-to-br from-sky-400 to-blue-500 text-white shadow-sm",
+                                                isLocked && "bg-white/50 text-muted-foreground border border-white/60",
+                                                !isActive && !isCompleted && !isLocked && "bg-white/50 text-foreground border border-white/60",
+                                            )}
+                                            animate={isCompleted ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+                                            transition={{ duration: 0.35, ease: "easeOut" }}
+                                        >
+                                            <AnimatePresence mode="wait" initial={false}>
+                                                {isProcessing ? (
+                                                    <motion.span key="processing" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    </motion.span>
+                                                ) : isCompleted ? (
+                                                    <motion.span key="check" initial={{ opacity: 0, scale: 0.5, rotate: -30 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.25, ease: "backOut" }}>
+                                                        <Check className="w-3.5 h-3.5" />
+                                                    </motion.span>
+                                                ) : (
+                                                    <motion.span key={`num-${index}`} initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} transition={{ duration: 0.15 }}>
+                                                        {index + 1}
+                                                    </motion.span>
+                                                )}
+                                            </AnimatePresence>
+                                        </motion.div>
 
-                        return (
-                            <StepSection
-                                key={step.id}
-                                stepId={step.id}
-                                title={step.title}
-                                description={step.description}
-                                icon={step.icon}
-                                isCompleted={isCompleted}
-                                isActive={isActive}
-                                isLocked={isLocked}
-                                isExpanded={isExpanded}
-                                isProcessing={isProcessing}
-                                onToggle={() => toggleStep(step.id)}
-                            >
-                                {step.content}
-                            </StepSection>
-                        );
-                    })}
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-medium truncate">{step.title}</p>
+                                            <p className="text-xs text-muted-foreground truncate">{step.description}</p>
+                                        </div>
+
+                                        {isLocked && <Lock className="w-3.5 h-3.5 text-muted-foreground ml-auto shrink-0" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </aside>
+
+                    <section className="overflow-hidden">
+                        <StepSection
+                            stepId={activeStep.id}
+                            title={activeStep.title}
+                            description={activeStep.description}
+                            icon={activeStep.icon}
+                            isCompleted={activeStatus.isCompleted}
+                            isActive={activeStatus.isActive}
+                            isLocked={activeStatus.isLocked}
+                            isExpanded={true}
+                            isProcessing={activeStatus.isProcessing}
+                            onToggle={() => {}}
+                        >
+                            <AnimatePresence mode="wait" initial={false} custom={direction}>
+                                <motion.div
+                                    key={activeStep.id}
+                                    custom={direction}
+                                    variants={{
+                                        enter: (d: number) => ({ opacity: 0, x: d * 24 }),
+                                        center: { opacity: 1, x: 0 },
+                                        exit: (d: number) => ({ opacity: 0, x: d * -24 }),
+                                    }}
+                                    initial="enter"
+                                    animate="center"
+                                    exit="exit"
+                                    transition={{ duration: 0.22, ease: "easeOut" }}
+                                >
+                                    {activeStep.content}
+                                </motion.div>
+                            </AnimatePresence>
+                        </StepSection>
+                    </section>
                 </div>
             </div>
         </main>

@@ -65,6 +65,11 @@ const config: Config = {
                 sans: ["Inter", "system-ui", "sans-serif"],
                 mono: ["JetBrains Mono", "monospace"],
             },
+            backgroundImage: {
+                "gradient-primary": "linear-gradient(135deg, #38bdf8 0%, #3b6ef8 100%)",
+                "gradient-accent":  "linear-gradient(135deg, #f97316 0%, #ec4899 100%)",
+                "gradient-icon":    "linear-gradient(135deg, #06b6d4 0%, #3b82f6 50%, #d946ef 100%)",
+            },
             animation: {
                 "shimmer": "shimmer 2s linear infinite",
                 "pulse-glow": "pulse-glow 2s ease-in-out infinite",
@@ -78,8 +83,8 @@ const config: Config = {
                     "100%": { backgroundPosition: "200% 0" },
                 },
                 "pulse-glow": {
-                    "0%, 100%": { boxShadow: "0 0 20px rgba(99, 102, 241, 0.3)" },
-                    "50%": { boxShadow: "0 0 40px rgba(99, 102, 241, 0.6)" },
+                    "0%, 100%": { boxShadow: "0 0 20px rgba(43, 134, 237, 0.25)" },
+                    "50%": { boxShadow: "0 0 40px rgba(43, 134, 237, 0.50)" },
                 },
                 "slide-up": {
                     "0%": { transform: "translateY(10px)", opacity: "0" },

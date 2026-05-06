@@ -99,6 +99,10 @@ interface AppState {
     videoHasAudio: boolean | null; // null = not yet determined
     setVideoHasAudio: (value: boolean) => void;
 
+    // Extracted audio file (MP3) from /api/process-video — used for waveform rendering
+    audioFile: File | null;
+    setAudioFile: (file: File | null) => void;
+
     // Suggested text colour derived from video luminance (set after /api/process-video)
     suggestedTextColor: string;
     setSuggestedTextColor: (color: string) => void;
@@ -114,8 +118,10 @@ interface AppState {
     // Loading states
     isAnalyzing: boolean;
     setIsAnalyzing: (value: boolean) => void;
-    isTranslating: boolean;
-    setIsTranslating: (value: boolean) => void;
+    isTranslatingText: boolean;
+    setIsTranslatingText: (value: boolean) => void;
+    isTranslatingVoiceover: boolean;
+    setIsTranslatingVoiceover: (value: boolean) => void;
     isGeneratingDubbing: boolean;
     setIsGeneratingDubbing: (value: boolean) => void;
     isExporting: boolean;
@@ -150,11 +156,13 @@ const initialState = {
     outroConfig: DEFAULT_OUTRO_CONFIG,
     exportJobs: [],
     videoHasAudio: null,
+    audioFile: null as File | null,
     suggestedTextColor: '#ffffff',
     suggestedOutroTextColor: '#181C25',
     detectedVoiceoverLanguage: null as { code: string; name: string } | null,
     isAnalyzing: false,
-    isTranslating: false,
+    isTranslatingText: false,
+    isTranslatingVoiceover: false,
     isGeneratingDubbing: false,
     isExporting: false,
 };
@@ -313,6 +321,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     setVideoHasAudio: (value) => set({ videoHasAudio: value }),
 
+    setAudioFile: (file) => set({ audioFile: file }),
+
     setSuggestedTextColor: (color) => set({ suggestedTextColor: color }),
 
     setSuggestedOutroTextColor: (color) => set({ suggestedOutroTextColor: color }),
@@ -321,7 +331,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 
     setIsAnalyzing: (value) => set({ isAnalyzing: value }),
-    setIsTranslating: (value) => set({ isTranslating: value }),
+    setIsTranslatingText: (value) => set({ isTranslatingText: value }),
+    setIsTranslatingVoiceover: (value) => set({ isTranslatingVoiceover: value }),
     setIsGeneratingDubbing: (value) => set({ isGeneratingDubbing: value }),
     setIsExporting: (value) => set({ isExporting: value }),
 
