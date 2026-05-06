@@ -3207,6 +3207,7 @@ function SceneVideoPlayer({
                 positionY: layer.positionY,
                 positionAnchor: layer.positionAnchor ?? 'middle',
                 fontSize: layer.fontSize,
+                fontSizeCap: layer.fontSizeCap,
                 fontWeight: layer.fontWeight ?? 800,
                 color: layer.color,
                 backgroundColor: layer.backgroundColor,
