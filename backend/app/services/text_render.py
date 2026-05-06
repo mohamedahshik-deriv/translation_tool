@@ -560,7 +560,7 @@ def render_text_layer_to_png(
             canvas.save(buf, format="PNG")
             return buf.getvalue()
 
-        line_h  = int(best_size * 1.3)
+        line_h  = int(best_size * 1.5)
         total_h = len(lines) * line_h
 
         pos_y_px = layer.position_y
@@ -654,7 +654,7 @@ def render_text_layer_to_png(
         canvas.save(buf, format="PNG")
         return buf.getvalue()
 
-    line_h  = int(best_size * 1.3)
+    line_h  = int(best_size * 1.5)
     total_h = len(lines) * line_h
 
     pos_y_px = layer.position_y

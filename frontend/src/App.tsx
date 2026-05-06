@@ -2379,7 +2379,7 @@ async function renderLayerOverlayToPng(
     };
 
     const fontSize = Math.max(8, resolveFittedFontSize());
-    const lineHeight = (layer.textStyle === 'disclaimer' || layer.maxLines === 0) ? 1.4 : 1.0;
+    const lineHeight = (layer.textStyle === 'disclaimer' || layer.maxLines === 0) ? 1.4 : 1.5;
     const lineHeightPx = Math.max(1, fontSize * lineHeight);
 
     ctx.textBaseline = 'top';
@@ -3476,7 +3476,7 @@ function SceneVideoPlayer({
                                                 )
                                                 * (previewShortSide / 1080)
                                             ))}
-                                            lineHeight={1}
+                                            lineHeight={1.5}
                                             maxLines={2}
                                             backgroundColor={layer.backgroundColor}
                                             textAlign={textAlign}
