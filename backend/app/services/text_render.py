@@ -492,7 +492,23 @@ def render_text_layer_to_png(
 
     is_arabic = _is_rtl_text(plain)
     is_bold   = True if is_arabic else (layer.font_weight or 800) > 400
-    max_width = int(video_width * 0.76)
+    left_safe = int(video_width * 0.12)
+    right_safe = int(video_width * 0.88)
+    if layer.position_x <= video_width * 0.20:
+        bounds_left = int(layer.position_x)
+        bounds_right = right_safe
+        zone_align = "left"
+    elif layer.position_x >= video_width * 0.80:
+        bounds_left = left_safe
+        bounds_right = int(layer.position_x)
+        zone_align = "right"
+    else:
+        bounds_left = left_safe
+        bounds_right = right_safe
+        zone_align = "center"
+    # Right-column non-Arabic should flow left-to-right from the box's left edge.
+    effective_align = "left" if zone_align == "right" and not is_arabic else zone_align
+    max_width = max(1, bounds_right - bounds_left)
     # max_lines=0 means unlimited (used for disclaimer); treat as a large cap internally
     MAX_LINES = layer.max_lines if layer.max_lines > 0 else 9999
     text_color = layer.color or "#ffffff"
@@ -507,7 +523,9 @@ def render_text_layer_to_png(
         "base_size": base_size,
         "max_width": max_width,
         "max_lines": layer.max_lines,
-        "position_anchor": layer.position_anchor,
+            "position_anchor": layer.position_anchor,
+            "zone_align": zone_align,
+            "effective_align": effective_align,
         "content_length": len(plain),
         "raw_content_length": len(raw_content),
         "has_markup_tokens": ("{" in raw_content and "}" in raw_content) or ("[" in raw_content and "]" in raw_content),
@@ -572,8 +590,6 @@ def render_text_layer_to_png(
         else:
             start_y = int(pos_y_px - total_h / 2)
 
-        center_x = video_width // 2
-
         # Optional background box — width based on widest line
         if layer.background_color:
             max_line_w = max(
@@ -583,9 +599,15 @@ def render_text_layer_to_png(
             pad_x, pad_y, radius = 14, 6, 6
             bw = min(max_line_w, max_width) + pad_x * 2
             bh = total_h + pad_y * 2
+            if effective_align == "left":
+                bg_left = bounds_left
+            elif effective_align == "right":
+                bg_left = bounds_right - (bw - pad_x * 2)
+            else:
+                bg_left = bounds_left + (max_width - (bw - pad_x * 2)) // 2
             draw.rounded_rectangle(
-                [center_x - bw // 2, start_y - pad_y,
-                 center_x + bw // 2, start_y - pad_y + bh],
+                [int(bg_left) - pad_x, start_y - pad_y,
+                 int(bg_left) - pad_x + bw, start_y - pad_y + bh],
                 radius=radius,
                 fill=layer.background_color,
             )
@@ -600,7 +622,12 @@ def render_text_layer_to_png(
         for i, line in enumerate(lines):
             runs      = _split_font_runs(line, ar_font, lat_font, ar_cmap)
             line_w    = _measure_runs(draw, runs)
-            x         = center_x - line_w // 2
+            if effective_align == "left":
+                x = bounds_left + line_w
+            elif effective_align == "right":
+                x = bounds_right
+            else:
+                x = bounds_left + ((max_width + line_w) // 2)
             y         = start_y + i * line_h
 
             # Align all runs to a shared baseline so mixed fonts sit on the same line
@@ -666,8 +693,6 @@ def render_text_layer_to_png(
     else:
         start_y = pos_y_px - total_h / 2
 
-    center_x = video_width // 2
-
     if layer.background_color:
         max_line_w = max(
             draw.textbbox((0, 0), ln, font=font)[2] - draw.textbbox((0, 0), ln, font=font)[0]
@@ -676,9 +701,15 @@ def render_text_layer_to_png(
         pad_x, pad_y, radius = 14, 6, 6
         bw = min(max_line_w, max_width) + pad_x * 2
         bh = total_h + pad_y * 2
+        if effective_align == "left":
+            bg_left = bounds_left
+        elif effective_align == "right":
+            bg_left = bounds_right - (bw - pad_x * 2)
+        else:
+            bg_left = bounds_left + (max_width - (bw - pad_x * 2)) // 2
         draw.rounded_rectangle(
-            [center_x - bw // 2, int(start_y) - pad_y,
-             center_x + bw // 2, int(start_y) - pad_y + bh],
+            [int(bg_left) - pad_x, int(start_y) - pad_y,
+             int(bg_left) - pad_x + bw, int(start_y) - pad_y + bh],
             radius=radius,
             fill=layer.background_color,
         )
@@ -690,7 +721,12 @@ def render_text_layer_to_png(
     for i, line in enumerate(lines):
         bbox   = draw.textbbox((0, 0), line, font=font)
         text_w = bbox[2] - bbox[0]
-        x = center_x - text_w // 2
+        if effective_align == "left":
+            x = bounds_left
+        elif effective_align == "right":
+            x = bounds_right - text_w
+        else:
+            x = bounds_left + (max_width - text_w) // 2
         y = int(start_y) + i * line_h
 
         line_words = _split_words(line)
