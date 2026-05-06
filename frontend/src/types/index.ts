@@ -278,6 +278,7 @@ export interface TextLayer {
     positionAnchor?: 'top' | 'middle' | 'bottom'; // vertical alignment anchor
     fontFamily: string;
     fontSize: number;
+    fontSizeCap?: number; // stable auto-fit ceiling used for textStyle layers (keeps rebound behavior)
     fontWeight?: number; // defaults to 800 (bold); use 400 for regular
     textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta'; // 'headline' = ExtraBold 64–128px, 'body' = Regular 24–32px, 'disclaimer' = Regular 24px (16px if >3 lines), 'cta' = ExtraBold 56–72px
     color: string;

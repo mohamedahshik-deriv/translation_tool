@@ -2092,6 +2092,7 @@ interface TextLayerOverlay {
     positionY: number;                          // px in native video resolution
     positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
+    fontSizeCap?: number;
     fontWeight?: number; // defaults to 800 if not set
     textStyle?: 'headline' | 'body' | 'disclaimer' | 'cta'; // used to clamp auto-fit range; 'disclaimer' = 24px default, 16px if >3 lines, no clamp; 'cta' = ExtraBold 56–72px
     maxLines?: number; // override for per-layer line limit (0 = unlimited)
@@ -2177,6 +2178,7 @@ type ExportOverlayLayer = {
     positionY: number;
     positionAnchor?: 'top' | 'middle' | 'bottom';
     fontSize: number;
+    fontSizeCap?: number;
     fontWeight?: number;
     color: string;
     backgroundColor?: string;
@@ -2292,6 +2294,7 @@ function buildOverlayRenderCacheKey(
         layer.positionY,
         layer.positionAnchor ?? 'middle',
         layer.fontSize ?? 0,
+        layer.fontSizeCap ?? '',
         layer.fontWeight ?? 800,
         layer.color ?? '',
         layer.backgroundColor ?? '',
@@ -2356,19 +2359,7 @@ async function renderLayerOverlayToPng(
             return testDisclaimer(24) > 3 ? 16 : 24;
         }
 
-        const byStyle = layer.textStyle === 'headline'
-            ? {
-                min: 64,
-                max: Math.max(64, Math.round(layer.fontSize || 128)),
-            }
-            : layer.textStyle === 'body'
-                ? {
-                    min: 24,
-                    max: Math.max(24, Math.round(layer.fontSize || 32)),
-                }
-                : layer.textStyle === 'cta'
-                    ? { min: 56, max: 72 }
-                    : { min: Math.max(8, Math.round(layer.fontSize || 24)), max: Math.max(8, Math.round(layer.fontSize || 24)) };
+        const byStyle = getAutoFitBounds(layer.textStyle, layer.fontSize, layer.fontSizeCap);
 
         let lo = byStyle.min;
         let hi = byStyle.max;
@@ -2492,6 +2483,28 @@ async function renderLayerOverlayCached(
 const DEFAULT_FONT_STACK = 'Inter, sans-serif';
 const ARABIC_FONT_STACK = '"Noto Sans Arabic", sans-serif';
 const ARABIC_BOLD_WEIGHT = 800;
+
+function getAutoFitBounds(
+    textStyle: 'headline' | 'body' | 'disclaimer' | 'cta' | undefined,
+    fontSize: number,
+    fontSizeCap?: number
+): { min: number; max: number } {
+    const resolvedCap = Number.isFinite(fontSizeCap) ? Math.round(fontSizeCap as number) : undefined;
+    if (textStyle === 'headline') {
+        const min = 64;
+        return { min, max: Math.max(min, resolvedCap ?? 128) };
+    }
+    if (textStyle === 'body') {
+        const min = 24;
+        return { min, max: Math.max(min, resolvedCap ?? 32) };
+    }
+    if (textStyle === 'cta') {
+        const min = 56;
+        return { min, max: Math.max(min, resolvedCap ?? 72) };
+    }
+    const fixed = Math.max(8, Math.round(fontSize || 24));
+    return { min: fixed, max: fixed };
+}
 
 function hasArabicScript(text: string): boolean {
     return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(text);
@@ -3447,15 +3460,7 @@ function SceneVideoPlayer({
                                             content={layer.content}
                                             defaultColor={layer.color}
                                             maxFontSize={Math.max(12, Math.round(
-                                                (
-                                                    layer.textStyle === 'headline'
-                                                        ? Math.max(64, Math.round(layer.fontSize || 128))
-                                                        : layer.textStyle === 'body'
-                                                            ? Math.max(24, Math.round(layer.fontSize || 32))
-                                                            : layer.textStyle === 'cta'
-                                                                ? 72
-                                                                : layer.fontSize
-                                                )
+                                                getAutoFitBounds(layer.textStyle, layer.fontSize, layer.fontSizeCap).max
                                                 * (previewShortSide / 1080)
                                             ))}
                                             minFontSize={Math.max(6, Math.round(
@@ -3896,6 +3901,7 @@ function EditTextStepContent() {
                     positionAnchor: mainPos.anchor,
                     fontFamily: "Inter",
                     fontSize,
+                    fontSizeCap: isOutro ? undefined : 128,
                     fontWeight: isOutro ? undefined : 800,
                     textStyle: isOutro ? undefined : 'headline',
                     color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
@@ -3947,6 +3953,7 @@ function EditTextStepContent() {
                 positionAnchor: defaultPos.anchor,
                 fontFamily: "Inter",
                 fontSize: 128,
+                fontSizeCap: 128,
                 fontWeight: 800,
                 textStyle: 'headline',
                 color: suggestedTextColor,
@@ -4008,6 +4015,7 @@ function EditTextStepContent() {
                 positionAnchor: mainPos2.anchor,
                 fontFamily: "Inter",
                 fontSize,
+                fontSizeCap: isOutro ? undefined : 128,
                 fontWeight: isOutro ? undefined : 800,
                 textStyle: isOutro ? undefined : 'headline' as const,
                 color: isOutro ? suggestedOutroTextColor : suggestedTextColor,
@@ -4068,6 +4076,7 @@ function EditTextStepContent() {
         positionY: layer.positionY,
         positionAnchor: layer.positionAnchor,
         fontSize: layer.fontSize,
+        fontSizeCap: layer.fontSizeCap,
         fontWeight: layer.fontWeight ?? 800,
         textStyle: layer.textStyle,
         color: layer.color,
@@ -4289,9 +4298,10 @@ function EditTextStepContent() {
                                     const presetSizes = effectiveStyle === 'headline'
                                         ? { max: 128, medium: 96, min: 64 }
                                         : { max: 32, medium: 28, min: 24 };
-                                    const activePreset = layer.fontSize === presetSizes.medium
+                                    const activeSizeCap = Math.round(layer.fontSizeCap ?? presetSizes.max);
+                                    const activePreset = activeSizeCap === presetSizes.medium
                                         ? 'medium'
-                                        : layer.fontSize === presetSizes.min
+                                        : activeSizeCap === presetSizes.min
                                             ? 'min'
                                             : 'max';
                                     return (
@@ -4314,6 +4324,7 @@ function EditTextStepContent() {
                                                             onChange={() => updateTextLayer(currentSegment!.id, layer.id, {
                                                                 textStyle: 'headline',
                                                                 fontSize: 128,
+                                                                fontSizeCap: 128,
                                                                 fontWeight: 800,
                                                             })}
                                                             className="accent-primary"
@@ -4335,6 +4346,7 @@ function EditTextStepContent() {
                                                             onChange={() => updateTextLayer(currentSegment!.id, layer.id, {
                                                                 textStyle: 'body',
                                                                 fontSize: 32,
+                                                                fontSizeCap: 32,
                                                                 fontWeight: 400,
                                                             })}
                                                             className="accent-primary"
@@ -4363,7 +4375,10 @@ function EditTextStepContent() {
                                                         <button
                                                             key={preset.key}
                                                             type="button"
-                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, { fontSize: preset.size })}
+                                                            onClick={() => updateTextLayer(currentSegment!.id, layer.id, {
+                                                                fontSize: preset.size,
+                                                                fontSizeCap: preset.size,
+                                                            })}
                                                             className={cn(
                                                                 "px-2 py-2 rounded-lg border text-left transition-all",
                                                                 activePreset === preset.key
@@ -4388,8 +4403,8 @@ function EditTextStepContent() {
                                                             className="w-full px-2 py-1.5 rounded bg-background border border-border text-xs text-muted-foreground"
                                                             title={`Auto-fit: ${
                                                                 effectiveStyle === 'headline'
-                                                                    ? `64–${Math.max(64, Math.round(layer.fontSize || 128))}`
-                                                                    : `24–${Math.max(24, Math.round(layer.fontSize || 32))}`
+                                                                    ? `64–${Math.max(64, Math.round(layer.fontSizeCap ?? 128))}`
+                                                                    : `24–${Math.max(24, Math.round(layer.fontSizeCap ?? 32))}`
                                                             }px range`}
                                                         >
                                                             {layer.fontSize}px <span className="text-[9px] opacity-60">auto</span>
@@ -6762,6 +6777,7 @@ function ExportStepContent() {
                             positionY: tr?.positionYOverride ?? layer.positionY,
                             positionAnchor: tr?.positionAnchorOverride ?? layer.positionAnchor ?? 'middle',
                             fontSize: tr?.fontSizeOverride ?? layer.fontSize,
+                            fontSizeCap: layer.fontSizeCap,
                             fontWeight: layer.fontWeight ?? 800,
                             color: layer.color,
                             backgroundColor: layer.backgroundColor ?? undefined,
