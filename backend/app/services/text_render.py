@@ -693,16 +693,23 @@ def render_text_layer_to_png(
     else:
         start_y = pos_y_px - total_h / 2
 
+    # For right-zone left-paragraph: anchor the block's right edge to bounds_right,
+    # then left-align all lines from that block_left position.
+    max_line_w = max(
+        draw.textbbox((0, 0), ln, font=font)[2] - draw.textbbox((0, 0), ln, font=font)[0]
+        for ln in lines
+    )
+    if zone_align == "right" and effective_align == "left":
+        block_left = bounds_right - max_line_w
+    else:
+        block_left = bounds_left
+
     if layer.background_color:
-        max_line_w = max(
-            draw.textbbox((0, 0), ln, font=font)[2] - draw.textbbox((0, 0), ln, font=font)[0]
-            for ln in lines
-        )
         pad_x, pad_y, radius = 14, 6, 6
         bw = min(max_line_w, max_width) + pad_x * 2
         bh = total_h + pad_y * 2
         if effective_align == "left":
-            bg_left = bounds_left
+            bg_left = block_left
         elif effective_align == "right":
             bg_left = bounds_right - (bw - pad_x * 2)
         else:
@@ -722,7 +729,7 @@ def render_text_layer_to_png(
         bbox   = draw.textbbox((0, 0), line, font=font)
         text_w = bbox[2] - bbox[0]
         if effective_align == "left":
-            x = bounds_left
+            x = block_left
         elif effective_align == "right":
             x = bounds_right - text_w
         else:

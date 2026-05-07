@@ -215,7 +215,7 @@ export const POSITION_GRID: Record<VideoResolution, Record<GridPosition, GridPos
         MR: { x: 952,  y: 960,  anchor: 'middle' },
         BL: { x: 128,  y: 1412, anchor: 'bottom' },
         BC: { x: 540,  y: 1412, anchor: 'bottom' },
-        BR: { x: 888,  y: 1412, anchor: 'bottom' }, // right edge at 1080-192=888 to clear content-bottom block
+        BR: { x: 904,  y: 1412, anchor: 'bottom' }, // subtle inset from right safe-edge for mockup match
     },
     '1920x1080': {
         TL: { x: 64,   y: 192,  anchor: 'top'    }, // below 300×192 content-top block

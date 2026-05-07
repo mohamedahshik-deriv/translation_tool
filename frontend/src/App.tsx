@@ -2401,10 +2401,17 @@ async function renderLayerOverlayToPng(
                 ? layer.positionY - totalHeight
                 : layer.positionY - totalHeight / 2;
 
+    // For right-zone left-paragraph: anchor the block's right edge to bounds.right,
+    // then left-align all lines from that block_left position.
+    const maxLineWidth = Math.max(...lineWidths);
+    const blockLeft = (bounds.align === 'right' && effectiveAlign === 'left')
+        ? bounds.right - maxLineWidth
+        : bounds.left;
+
     if (layer.backgroundColor) {
-        const blockWidth = Math.min(maxWidth, Math.max(...lineWidths));
+        const blockWidth = Math.min(maxWidth, maxLineWidth);
         const left = effectiveAlign === 'left'
-            ? bounds.left
+            ? blockLeft
             : effectiveAlign === 'right'
                 ? bounds.right - blockWidth
                 : bounds.left + (maxWidth - blockWidth) / 2;
@@ -2419,7 +2426,7 @@ async function renderLayerOverlayToPng(
         const y = startY + (i * lineHeightPx);
         if (isArabic) {
             let x = effectiveAlign === 'left'
-                ? bounds.left + width
+                ? blockLeft + width
                 : effectiveAlign === 'right'
                     ? bounds.right
                     : bounds.left + ((maxWidth + width) / 2);
@@ -2430,7 +2437,7 @@ async function renderLayerOverlayToPng(
             }
         } else {
             let x = effectiveAlign === 'left'
-                ? bounds.left
+                ? blockLeft
                 : effectiveAlign === 'right'
                     ? bounds.right - width
                     : bounds.left + (maxWidth - width) / 2;
@@ -3384,7 +3391,9 @@ function SceneVideoPlayer({
                             layer.positionX <= vW * 0.20 ? 'left' : layer.positionX >= vW * 0.80 ? 'right' : 'center';
                         const isArabicLayer = hasArabicScript(layer.content ?? '');
                         const textAlign: 'left' | 'center' | 'right' =
-                            horizontalZone === 'right' ? (isArabicLayer ? 'right' : 'left') : horizontalZone;
+                            horizontalZone === 'left'  ? (isArabicLayer ? 'right' : 'left')
+                            : horizontalZone === 'right' ? (isArabicLayer ? 'right' : 'left')
+                            : 'center';
                         // Vertical transform: use explicit anchor when set, else derive from position
                         const translateY = layer.positionAnchor === 'top'    ? '0%'
                                          : layer.positionAnchor === 'bottom' ? '-100%'
@@ -3453,7 +3462,7 @@ function SceneVideoPlayer({
                                                     display: 'block',
                                                     overflow: 'visible',
                                                     transform: 'scale(0.5)',
-                                                    transformOrigin: horizontalZone === 'left' ? 'top left' : horizontalZone === 'right' ? 'top right' : 'top center',
+                                                    transformOrigin: horizontalZone === 'left' ? 'top right' : horizontalZone === 'right' ? 'top right' : 'top center',
                                                     width: '200%',
                                                     marginLeft: horizontalZone === 'center' ? '-50%' : horizontalZone === 'right' ? '-100%' : '0',
                                                 }}
