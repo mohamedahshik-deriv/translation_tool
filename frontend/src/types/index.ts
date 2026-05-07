@@ -178,6 +178,7 @@ export interface VideoSegment {
     thumbnailUrl?: string;
     textLayers: TextLayer[];
     isOutro?: boolean;
+    gradientDirection?: 'top' | 'bottom' | 'left' | 'right';
 }
 
 // ============================================

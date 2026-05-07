@@ -1,7 +1,7 @@
 "use client";
 
 import { StepWizard } from "./StepWizard";
-import interpreterModeIcon from "../../../assets/interpreter_mode_icon.svg";
+const interpreterModeIcon = "/assets/interpreter_mode_icon.svg";
 
 export function Header() {
     return (

@@ -47,7 +47,7 @@ import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, Animat
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
 import { extractFrame } from "@/lib/frame-extractor";
-import interpreterModeIcon from "../assets/interpreter_mode_icon.svg";
+const interpreterModeIcon = "/assets/interpreter_mode_icon.svg";
 
 // ============================================
 // Step Section Component (Accordion Item)
@@ -2784,6 +2784,7 @@ function SceneVideoPlayer({
     videoHeight,
     onLayerFontSizeResolved,
     overlayRenderMode = 'dom',
+    gradientDirection,
 }: {
     videoUrl: string;
     startTime: number;
@@ -2809,6 +2810,8 @@ function SceneVideoPlayer({
     onLayerFontSizeResolved?: (layerId: string, nativePx: number) => void;
     /** 'canvas' renders pre-rasterized overlays (closer to export), 'dom' uses live DOM text. */
     overlayRenderMode?: 'dom' | 'canvas';
+    /** Gradient PNG overlay direction — renders matching asset below text layers. */
+    gradientDirection?: 'top' | 'bottom' | 'left' | 'right';
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -3293,6 +3296,23 @@ function SceneVideoPlayer({
                     muted={effectiveMuted}
                     onClick={() => togglePlay()}
                 />
+
+                {/* Gradient PNG overlay — sits above video, below text layers */}
+                {gradientDirection && videoWidth && videoHeight && (
+                    <img
+                        src={`/assets/gradients/${videoWidth}x${videoHeight}/${gradientDirection}.png`}
+                        alt=""
+                        draggable={false}
+                        className="absolute pointer-events-none select-none"
+                        style={{
+                            zIndex: 5,
+                            left: `${displayRect.left}px`,
+                            top: `${displayRect.top}px`,
+                            width: `${displayRect.width}px`,
+                            height: `${displayRect.height}px`,
+                        }}
+                    />
+                )}
 
                 {/* Text Layer Overlays - positioned relative to video content only */}
                 {/* containerType inline-size enables cqw units so font sizes scale with player width */}
@@ -4161,6 +4181,7 @@ function EditTextStepContent() {
                         videoWidth={video.width}
                         videoHeight={video.height}
                         overlayRenderMode="canvas"
+                        gradientDirection={currentSegment?.gradientDirection}
                         onLayerFontSizeResolved={(layerId, nativePx) => {
                             if (currentSegment) {
                                 const layer = currentSegment.textLayers.find(l => l.id === layerId);
@@ -4605,6 +4626,38 @@ function EditTextStepContent() {
                         )}
                     </div>
                 ))}
+
+                {/* Gradient direction selector */}
+                {currentSegment && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-surface-elevated">
+                        <span className="text-xs font-medium text-muted-foreground shrink-0">Gradient</span>
+                        <div className="flex gap-1 flex-1">
+                            {(['top', 'bottom', 'left', 'right'] as const).map((dir) => {
+                                const icons = { top: '↑', bottom: '↓', left: '←', right: '→' };
+                                const isActive = currentSegment.gradientDirection === dir;
+                                return (
+                                    <button
+                                        key={dir}
+                                        onClick={() => {
+                                            const next = isActive ? undefined : dir;
+                                            setSegments(segments.map(s =>
+                                                s.id === currentSegment.id ? { ...s, gradientDirection: next } : s
+                                            ));
+                                        }}
+                                        className={cn(
+                                            "flex-1 py-1 text-xs rounded-md border font-medium uppercase transition-colors",
+                                            isActive
+                                                ? "bg-primary text-white border-primary"
+                                                : "border-border text-muted-foreground hover:border-primary hover:text-primary"
+                                        )}
+                                    >
+                                        {icons[dir]} {dir}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 <Button variant="outline" size="sm" onClick={handleAddText} className="w-full">
                     <Plus className="w-4 h-4 mr-2" />
@@ -6813,6 +6866,7 @@ function ExportStepContent() {
                     playbackRate,
                     hasAudio: !!audioBlobsPerScene[i],
                     textLayers: tLayers,
+                    gradientFileKey: undefined as string | undefined,
                 };
             });
 
@@ -6831,6 +6885,26 @@ function ExportStepContent() {
                 }
             }
 
+            // Fetch gradient PNG blobs for scenes that have a gradient direction set
+            const gradientUploads: { key: string; blob: Blob }[] = [];
+            for (let i = 0; i < segments.length; i++) {
+                const dir = segments[i].gradientDirection;
+                if (!dir) continue;
+                const gradKey = `gradient_${i}`;
+                try {
+                    const res = await fetch(`/assets/gradients/${video.width}x${video.height}/${dir}.png`);
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        sceneConfigs[i].gradientFileKey = gradKey;
+                        gradientUploads.push({ key: gradKey, blob });
+                    } else {
+                        console.warn(`[export] gradient PNG not found for scene ${i} (${dir})`);
+                    }
+                } catch (e) {
+                    console.warn(`[export] gradient PNG fetch failed for scene ${i}:`, e);
+                }
+            }
+
             const formData = new FormData();
             formData.append('video', video.file);
             audioBlobsPerScene.forEach((blob, i) => {
@@ -6838,6 +6912,9 @@ function ExportStepContent() {
             });
             overlayUploads.forEach((overlay) => {
                 formData.append(overlay.key, overlay.blob, `${overlay.key}.png`);
+            });
+            gradientUploads.forEach(({ key, blob }) => {
+                formData.append(key, blob, `${key}.png`);
             });
             formData.append('config', JSON.stringify({
                 lang,
