@@ -305,3 +305,61 @@ export async function copywriteTranslateMarkup(
     );
     return results;
 }
+
+// ============================================
+// Background Music Generation
+// ============================================
+
+/**
+ * Calls the generate-background-music edge function and returns an audio/mpeg Blob.
+ * @param prompt      Music description (max 4100 chars)
+ * @param musicLengthMs  Duration in milliseconds (max 600_000)
+ */
+export async function generateBackgroundMusic(
+    prompt: string,
+    musicLengthMs: number,
+): Promise<Blob> {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Supabase is not configured');
+    }
+
+    const url = `${supabaseUrl}/functions/v1/generate-background-music`;
+    const controller = new AbortController();
+    // Music generation can take a while — allow 5 minutes
+    const timer = setTimeout(() => controller.abort(), 300_000);
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'apikey': supabaseAnonKey,
+            },
+            body: JSON.stringify({ prompt, music_length_ms: musicLengthMs }),
+            signal: controller.signal,
+        });
+
+        if (!response.ok) {
+            let errMsg = `HTTP ${response.status}`;
+            try {
+                const errBody = await response.json();
+                errMsg = errBody?.error ?? errBody?.message ?? errMsg;
+            } catch { /* ignore */ }
+            throw new Error(`Music generation failed: ${errMsg}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        return new Blob([buffer], { type: 'audio/mpeg' });
+    } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+            throw new Error('Music generation timed out after 5 minutes');
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
+}

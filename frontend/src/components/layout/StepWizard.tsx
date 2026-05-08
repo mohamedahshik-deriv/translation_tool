@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Check, Upload, Scan, Type, Languages, Mic, Film, Download } from "lucide-react";
+import { Check, Upload, Scan, Type, Languages, Mic, Film, Download, Music, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_STEPS, AppStep } from "@/types";
 import { useAppStore } from "@/store/app-store";
@@ -13,10 +13,12 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
     Languages,
     Mic,
     Film,
+    Music,
     Download,
+    Video,
 };
 
-const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'dub', 'outro', 'export'];
+const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'dub', 'outro', 'render', 'add-music', 'export'];
 
 export function StepWizard() {
     const { currentStep, setCurrentStep } = useAppStore();

@@ -13,6 +13,7 @@ import {
     DEFAULT_OUTRO_CONFIG,
     ScriptFile,
     ScriptEntry,
+    GeneratedMusicTrack,
 } from '@/types';
 
 interface AppState {
@@ -127,6 +128,22 @@ interface AppState {
     isExporting: boolean;
     setIsExporting: (value: boolean) => void;
 
+    // Rendered videos: lang code → blob URL of the backend-rendered MP4
+    renderedVideos: Record<string, string>;
+    setRenderedVideo: (lang: string, blobUrl: string) => void;
+    clearRenderedVideos: () => void;
+
+    // Background music
+    musicPrompt: string;
+    setMusicPrompt: (prompt: string) => void;
+    generatedTracks: GeneratedMusicTrack[];
+    addGeneratedTrack: (track: GeneratedMusicTrack) => void;
+    selectedTrackId: string | null;
+    setSelectedTrackId: (id: string | null) => void;
+    musicVolume: number;
+    setMusicVolume: (volume: number) => void;
+    clearUnselectedTracks: () => void;
+
     // Reset
     reset: () => void;
 }
@@ -165,6 +182,11 @@ const initialState = {
     isTranslatingVoiceover: false,
     isGeneratingDubbing: false,
     isExporting: false,
+    renderedVideos: {} as Record<string, string>,
+    musicPrompt: '',
+    generatedTracks: [] as GeneratedMusicTrack[],
+    selectedTrackId: null as string | null,
+    musicVolume: 0.3,
 };
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -335,6 +357,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     setIsTranslatingVoiceover: (value) => set({ isTranslatingVoiceover: value }),
     setIsGeneratingDubbing: (value) => set({ isGeneratingDubbing: value }),
     setIsExporting: (value) => set({ isExporting: value }),
+
+    setRenderedVideo: (lang, blobUrl) => set((state) => ({
+        renderedVideos: { ...state.renderedVideos, [lang]: blobUrl },
+    })),
+
+    clearRenderedVideos: () => set((state) => {
+        Object.values(state.renderedVideos).forEach((url) => URL.revokeObjectURL(url));
+        return { renderedVideos: {} };
+    }),
+
+    setMusicPrompt: (prompt) => set({ musicPrompt: prompt }),
+
+    addGeneratedTrack: (track) => set((state) => ({
+        generatedTracks: [...state.generatedTracks, track],
+    })),
+
+    setSelectedTrackId: (id) => set({ selectedTrackId: id }),
+
+    setMusicVolume: (volume) => set({ musicVolume: volume }),
+
+    clearUnselectedTracks: () => set((state) => {
+        const { selectedTrackId, generatedTracks } = state;
+        generatedTracks.forEach((t) => {
+            if (t.id !== selectedTrackId) {
+                URL.revokeObjectURL(t.blobUrl);
+            }
+        });
+        const kept = selectedTrackId
+            ? generatedTracks.filter((t) => t.id === selectedTrackId)
+            : [];
+        return { generatedTracks: kept };
+    }),
 
     reset: () => set({ ...initialState, sessionId: generateSessionId() }),
 }));
