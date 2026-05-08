@@ -1,5 +1,5 @@
 """
-POST /api/export-video
+POST /api/render-video
 
 Accepts:
   - video  : original video file (multipart)
@@ -10,6 +10,15 @@ For each scene:
   1. Renders text layers as transparent PNGs (Pillow)
   2. Processes scene with FFmpeg (trim + text overlay + audio)
 Concatenates all scenes into a final MP4 and returns it.
+
+POST /api/mix-music
+
+Accepts:
+  - video        : rendered MP4 file (multipart)
+  - music        : audio file (multipart)
+  - music_volume : float (default 0.3)
+
+Overlays the music onto the video and returns the mixed MP4.
 """
 
 from __future__ import annotations
@@ -360,11 +369,39 @@ async def _concatenate_scenes(scene_paths: list[str], output_path: str, fps: flo
     await _run_ffmpeg(cmd_args, "Concat", CONCAT_TIMEOUT)
 
 
+async def _mix_background_music(
+    video_path: str,
+    music_path: str,
+    music_volume: float,
+    output_path: str,
+) -> None:
+    """Overlay background music onto the final video, trimmed to video duration."""
+    # Clamp volume to safe range
+    vol = max(0.0, min(1.0, music_volume))
+    filter_complex = (
+        f"[1:a]volume={vol:.4f}[music];"
+        "[0:a][music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
+    )
+    cmd_args = [
+        "-y",
+        "-i", video_path,
+        "-i", music_path,
+        "-filter_complex", filter_complex,
+        "-map", "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
+        "-movflags", "+faststart",
+        output_path,
+    ]
+    await _run_ffmpeg(cmd_args, "MixMusic", CONCAT_TIMEOUT)
+
+
 # ── Route handler ─────────────────────────────────────────────────────────────
 
-@router.post("/export-video")
+@router.post("/render-video")
 @limiter.limit("5/minute")
-async def export_video(
+async def render_video(
     request: Request,
     video: UploadFile = File(...),
     config: str = Form(...),
@@ -462,10 +499,10 @@ async def export_video(
             scene_paths.append(scene_out)
             print(f"[export-video] scene {i + 1}/{len(cfg.scenes)} done")
 
-        final_path = str(work_dir / f"final_{cfg.lang}.mp4")
-        await _concatenate_scenes(scene_paths, final_path, cfg.fps)
+        concat_path = str(work_dir / f"concat_{cfg.lang}.mp4")
+        await _concatenate_scenes(scene_paths, concat_path, cfg.fps)
 
-        final_bytes = Path(final_path).read_bytes()
+        final_bytes = Path(concat_path).read_bytes()
         return Response(
             content=final_bytes,
             media_type="video/mp4",
@@ -480,6 +517,48 @@ async def export_video(
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Render failed: {exc}")
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+# ── Mix music route ───────────────────────────────────────────────────────────
+
+@router.post("/mix-music")
+@limiter.limit("10/minute")
+async def mix_music(
+    request: Request,
+    video: UploadFile = File(...),
+    music: UploadFile = File(...),
+    music_volume: float = Form(0.3),
+) -> Response:
+    """Mix background music into a pre-rendered video."""
+    work_dir = Path(tempfile.gettempdir()) / f"mix-{uuid.uuid4().hex}"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    original_stem = Path(video.filename or "export").stem
+
+    try:
+        video_path = str(work_dir / "input.mp4")
+        music_path = str(work_dir / "music.mp3")
+        Path(video_path).write_bytes(await video.read())
+        Path(music_path).write_bytes(await music.read())
+
+        output_path = str(work_dir / "output.mp4")
+        await _mix_background_music(video_path, music_path, music_volume, output_path)
+
+        final_bytes = Path(output_path).read_bytes()
+        return Response(
+            content=final_bytes,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'attachment; filename="{original_stem}_mixed.mp4"',
+                "Content-Length": str(len(final_bytes)),
+            },
+        )
+
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Mix failed: {exc}")
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)

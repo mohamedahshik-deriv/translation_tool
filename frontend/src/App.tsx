@@ -33,17 +33,17 @@ const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 
 const api = (path: string) => `${BACKEND_URL}${path}`;
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Upload, Scan, Type, Languages, Mic, Film, Download,
+    Upload, Scan, Type, Languages, Mic, Film, Download, Video,
     ChevronDown, ChevronUp, Check, Lock, Loader2, Settings,
     ArrowRight, Plus, Trash2, Play, Pause, RotateCcw, Volume2, VolumeX,
     Scissors, GripVertical, Clock, FileText, X, BookOpen,
     SkipBack, SkipForward, CheckCircle2, AlertCircle, RefreshCw,
-    ChevronLeft, ChevronRight, Settings2, Pencil
+    ChevronLeft, ChevronRight, Settings2, Pencil, Music, Music2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useAppStore } from "@/store/app-store";
-import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, SUPPORTED_RESOLUTIONS, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition } from "@/types";
+import { AppStep, APP_STEPS, SUPPORTED_LANGUAGES, VideoSegment, Timecode, AnimationType, TextLayer, SAFE_ZONES, VideoResolution, SUPPORTED_RESOLUTIONS, POSITION_GRID, POSITION_CONSTRAINTS, GRID_ORDER, GRID_POSITION_LABELS, GridPosition, GeneratedMusicTrack } from "@/types";
 import { cn } from "@/lib/utils";
 import { extractScriptText, isValidScriptFile, formatFileSize, detectScriptFileType, extractDisclaimerFromScript } from "@/lib/script-parser";
 import { extractFrame } from "@/lib/frame-extractor";
@@ -6627,7 +6627,7 @@ function OutroStepContent() {
             setSegments(updatedSegments);
         }
 
-        setCurrentStep('export');
+        setCurrentStep('render');
     };
 
     return (
@@ -6750,21 +6750,326 @@ function OutroStepContent() {
                 {isSavingOutro ? (
                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Translating Outro...</>
                 ) : (
-                    <>Continue to Export<ArrowRight className="w-4 h-4 ml-2" /></>
+                    <>Continue to Add Music<ArrowRight className="w-4 h-4 ml-2" /></>
                 )}
             </Button>
         </div>
     );
 }
 
-function ExportStepContent() {
+const MAX_MUSIC_PROMPT_CHARS = 4100;
+const MAX_MUSIC_LENGTH_MS = 600_000;
+
+function AddMusicStepContent() {
+    const {
+        video,
+        selectedLanguages,
+        renderedVideos,
+        musicPrompt, setMusicPrompt,
+        generatedTracks, addGeneratedTrack,
+        selectedTrackId, setSelectedTrackId,
+        musicVolume, setMusicVolume,
+        clearUnselectedTracks,
+        setCurrentStep,
+    } = useAppStore();
+
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [genError, setGenError] = useState<string | null>(null);
+
+    // Pick the first language that has a rendered video as the default preview
+    const [previewLang, setPreviewLang] = useState<string>(() =>
+        selectedLanguages.find(l => renderedVideos[l]) ?? selectedLanguages[0] ?? 'EN'
+    );
+
+    const videoRef = useRef<HTMLVideoElement | null>(null);
+    const musicAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    const videoDurationMs = video ? Math.round(video.duration * 1000) : 0;
+    const musicLengthMs = Math.min(videoDurationMs, MAX_MUSIC_LENGTH_MS);
+
+    const previewVideoUrl = renderedVideos[previewLang] ?? null;
+    const renderedLangs = selectedLanguages.filter(l => renderedVideos[l]);
+
+    // ── Reset video when language switches ────────────────────────────────────
+
+    useEffect(() => {
+        if (videoRef.current) { videoRef.current.pause(); videoRef.current.currentTime = 0; }
+        if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current.currentTime = 0; }
+    }, [previewLang]);
+
+    // ── Sync music audio with video ───────────────────────────────────────────
+
+    useEffect(() => {
+        const vid = videoRef.current;
+        const aud = musicAudioRef.current;
+        if (!vid || !aud) return;
+
+        const onPlay = () => { aud.currentTime = vid.currentTime; aud.play().catch(() => {}); };
+        const onPause = () => aud.pause();
+        const onSeeked = () => { aud.currentTime = vid.currentTime; };
+        const onEnded = () => { aud.pause(); aud.currentTime = 0; };
+
+        vid.addEventListener('play', onPlay);
+        vid.addEventListener('pause', onPause);
+        vid.addEventListener('seeked', onSeeked);
+        vid.addEventListener('ended', onEnded);
+        return () => {
+            vid.removeEventListener('play', onPlay);
+            vid.removeEventListener('pause', onPause);
+            vid.removeEventListener('seeked', onSeeked);
+            vid.removeEventListener('ended', onEnded);
+        };
+    }, [selectedTrackId, previewLang]);
+
+    useEffect(() => {
+        if (musicAudioRef.current) musicAudioRef.current.volume = musicVolume;
+    }, [musicVolume]);
+
+    // ── Handlers ──────────────────────────────────────────────────────────────
+
+    const selectedTrack = generatedTracks.find((t) => t.id === selectedTrackId) ?? null;
+
+    const handleLanguageChange = (lang: string) => {
+        setPreviewLang(lang);
+    };
+
+    const handleGenerate = async () => {
+        if (!video) return;
+        if (videoDurationMs > MAX_MUSIC_LENGTH_MS) {
+            setGenError(`Video is too long for music generation (max 10 min). Your video is ${Math.round(videoDurationMs / 60000)} min.`);
+            return;
+        }
+        setGenError(null);
+        setIsGenerating(true);
+        try {
+            const { generateBackgroundMusic } = await import('@/lib/supabase');
+            const blob = await generateBackgroundMusic(musicPrompt.trim(), musicLengthMs);
+            const blobUrl = URL.createObjectURL(blob);
+            const trackNumber = generatedTracks.length + 1;
+            const track: GeneratedMusicTrack = {
+                id: `music-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                label: `Track ${trackNumber}`,
+                blob,
+                blobUrl,
+            };
+            addGeneratedTrack(track);
+        } catch (err) {
+            setGenError(err instanceof Error ? err.message : 'Music generation failed');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleSelectTrack = (track: GeneratedMusicTrack) => {
+        setSelectedTrackId(track.id);
+        if (musicAudioRef.current) {
+            musicAudioRef.current.pause();
+            musicAudioRef.current.src = track.blobUrl;
+            musicAudioRef.current.volume = musicVolume;
+            musicAudioRef.current.load();
+            if (videoRef.current && !videoRef.current.paused) {
+                musicAudioRef.current.currentTime = videoRef.current.currentTime;
+                musicAudioRef.current.play().catch(() => {});
+            }
+        }
+    };
+
+    const handleContinue = () => {
+        clearUnselectedTracks();
+        setCurrentStep('export');
+    };
+
+    const promptCharsLeft = MAX_MUSIC_PROMPT_CHARS - musicPrompt.length;
+
+    // ── Render ─────────────────────────────────────────────────────────────────
+
+    return (
+        <div className="space-y-5 p-1">
+            {/* Rendered video preview */}
+            {previewVideoUrl ? (
+                <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-muted-foreground">Preview (rendered output)</span>
+                        {renderedLangs.length > 1 && (
+                            <select
+                                value={previewLang}
+                                onChange={(e) => handleLanguageChange(e.target.value)}
+                                className="text-xs rounded-md border border-border bg-surface-elevated text-foreground px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/50 cursor-pointer"
+                            >
+                                {renderedLangs.map((lang) => (
+                                    <option key={lang} value={lang}>{lang}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+
+                    <div className="relative rounded-lg overflow-hidden bg-black">
+                        <video
+                            ref={videoRef}
+                            src={previewVideoUrl}
+                            className="w-full max-h-[320px] object-contain"
+                            controls
+                            playsInline
+                            onEnded={() => {
+                                if (musicAudioRef.current) { musicAudioRef.current.pause(); musicAudioRef.current.currentTime = 0; }
+                            }}
+                        />
+                        {/* Hidden music audio element */}
+                        <audio
+                            ref={musicAudioRef}
+                            src={selectedTrack?.blobUrl ?? undefined}
+                            preload="auto"
+                            style={{ display: 'none' }}
+                        />
+                    </div>
+
+                    {/* Preview status */}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                            <Video className="w-3 h-3" />{previewLang} dubbed voice (rendered)
+                        </span>
+                        {selectedTrack && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                                <Music className="w-3 h-3" />{selectedTrack.label}
+                            </span>
+                        )}
+                        {selectedTrack && <span className="opacity-60">· simulates export output</span>}
+                    </div>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <p className="text-xs text-amber-700">No rendered video available. Please complete the Render step first.</p>
+                </div>
+            )}
+
+            {/* Prompt input */}
+            <div className="space-y-2">
+                <label className="text-xs font-medium text-foreground">Music Prompt</label>
+                <div className="relative">
+                    <textarea
+                        className="w-full rounded-lg bg-surface-elevated border border-border text-sm text-foreground placeholder:text-muted-foreground resize-none p-3 focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                        rows={3}
+                        maxLength={MAX_MUSIC_PROMPT_CHARS}
+                        placeholder="Describe the mood and style of background music, e.g. 'Upbeat corporate background music with piano and strings'"
+                        value={musicPrompt}
+                        onChange={(e) => setMusicPrompt(e.target.value)}
+                        disabled={isGenerating}
+                    />
+                    <span className={cn(
+                        'absolute bottom-2 right-3 text-[10px]',
+                        promptCharsLeft < 100 ? 'text-amber-500' : 'text-muted-foreground',
+                    )}>
+                        {promptCharsLeft}/{MAX_MUSIC_PROMPT_CHARS}
+                    </span>
+                </div>
+            </div>
+
+            {/* Generate button */}
+            <Button
+                variant="default"
+                className="w-full"
+                onClick={handleGenerate}
+                disabled={isGenerating || musicPrompt.trim().length === 0 || promptCharsLeft < 0}
+            >
+                {isGenerating ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating Music…</>
+                ) : (
+                    <><Music2 className="w-4 h-4 mr-2" />Generate Music</>
+                )}
+            </Button>
+
+            {/* Error */}
+            {genError && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-red-100 border border-red-300">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">{genError}</p>
+                </div>
+            )}
+
+            {/* Generated tracks */}
+            {generatedTracks.length > 0 && (
+                <div className="space-y-2">
+                    <span className="text-xs font-medium text-foreground">Generated Tracks</span>
+                    <div className="space-y-2">
+                        {generatedTracks.map((track) => {
+                            const isSelected = track.id === selectedTrackId;
+                            return (
+                                <button
+                                    key={track.id}
+                                    onClick={() => handleSelectTrack(track)}
+                                    className={cn(
+                                        'w-full flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-all',
+                                        isSelected
+                                            ? 'border-primary bg-primary/10 text-foreground'
+                                            : 'border-border bg-surface-elevated text-foreground hover:border-primary/50 hover:bg-surface-elevated/80',
+                                    )}
+                                >
+                                    <div className={cn(
+                                        'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
+                                        isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                                    )}>
+                                        <Music className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{track.label}</p>
+                                        {isSelected && (
+                                            <p className="text-[10px] text-primary mt-0.5">Selected · plays with preview</p>
+                                        )}
+                                    </div>
+                                    {isSelected && <Check className="w-4 h-4 text-primary flex-shrink-0" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Volume slider — only shown when there are generated tracks */}
+                    <div className="pt-1 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                                <Volume2 className="w-3.5 h-3.5" /> Music Volume
+                            </span>
+                            <span className="text-xs text-muted-foreground">{Math.round(musicVolume * 100)}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={musicVolume}
+                            onChange={(e) => setMusicVolume(Number(e.target.value))}
+                            className="w-full h-1.5 rounded-full accent-primary cursor-pointer"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            This volume will be used when mixing music into the exported video.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Continue */}
+            <Button
+                variant="gradient"
+                className="w-full"
+                onClick={handleContinue}
+            >
+                {selectedTrackId
+                    ? <>Continue to Export<ArrowRight className="w-4 h-4 ml-2" /></>
+                    : <>Skip & Continue to Export<ArrowRight className="w-4 h-4 ml-2" /></>
+                }
+            </Button>
+        </div>
+    );
+}
+
+function RenderStepContent() {
     const {
         selectedLanguages, isExporting, setIsExporting,
         video, segments, translations, dubbingTracks, videoHasAudio, outroConfig,
+        renderedVideos, setRenderedVideo,
+        setCurrentStep,
     } = useAppStore();
 
-    // Single source of truth: rendered blob URL per language (preview + download reuse the same blob)
-    const [renderedBlobs, setRenderedBlobs] = useState<Record<string, string>>({});
     const [renderProgress, setRenderProgress] = useState<Record<string, number>>({});
     const [renderErrors, setRenderErrors] = useState<Record<string, string>>({});
     const [renderingLangs, setRenderingLangs] = useState<Set<string>>(new Set());
@@ -6932,7 +7237,7 @@ function ExportStepContent() {
                 }));
             }, 1500);
 
-            const response = await fetch(api('/api/export-video'), {
+            const response = await fetch(api('/api/render-video'), {
                 method: 'POST',
                 body: formData,
             });
@@ -6945,12 +7250,12 @@ function ExportStepContent() {
 
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
-            setRenderedBlobs(prev => ({ ...prev, [lang]: url }));
+            setRenderedVideo(lang, url);
             setRenderProgress(prev => ({ ...prev, [lang]: 100 }));
             return url;
         } catch (err) {
             const msg = err instanceof Error ? err.message : 'Render failed';
-            console.error(`[export] ${lang}:`, msg);
+            console.error(`[render] ${lang}:`, msg);
             setRenderErrors(prev => ({ ...prev, [lang]: msg }));
             setRenderProgress(prev => ({ ...prev, [lang]: 0 }));
             return null;
@@ -6959,23 +7264,13 @@ function ExportStepContent() {
         }
     };
 
-    const exportAll = async () => {
+    const renderAll = async () => {
         setIsExporting(true);
-        for (const lang of selectedLanguages) {
-            const url = renderedBlobs[lang] ?? await renderLanguage(lang);
-            if (url) {
-                const stem = (video?.file.name ?? 'export').replace(/\.[^/.]+$/, '');
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${stem}_${lang}.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
-        }
+        await Promise.all(selectedLanguages.map(lang => renderLanguage(lang)));
         setIsExporting(false);
     };
 
+    const allRendered = selectedLanguages.every(lang => !!renderedVideos[lang]);
     const anyRendering = renderingLangs.size > 0;
 
     return (
@@ -6984,9 +7279,9 @@ function ExportStepContent() {
                 const info = SUPPORTED_LANGUAGES.find(l => l.code === lang);
                 const isRendering = renderingLangs.has(lang);
                 const progress = renderProgress[lang] ?? 0;
-                const blobUrl = renderedBlobs[lang];
+                const blobUrl = renderedVideos[lang];
                 const error = renderErrors[lang];
-                const isDone = progress === 100 && !error && !!blobUrl;
+                const isDone = !!blobUrl && !isRendering && !error;
 
                 return (
                     <div
@@ -7041,38 +7336,215 @@ function ExportStepContent() {
                                 disabled={isRendering || isExporting}
                             >
                                 {isRendering ? (
-                                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Rendering...</>
+                                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Rendering…</>
                                 ) : isDone ? (
-                                    <><Film className="w-3.5 h-3.5 mr-1.5" />Re-render</>
+                                    <><Video className="w-3.5 h-3.5 mr-1.5" />Re-render</>
                                 ) : (
-                                    <><Film className="w-3.5 h-3.5 mr-1.5" />Render Preview</>
+                                    <><Video className="w-3.5 h-3.5 mr-1.5" />Render</>
                                 )}
                             </Button>
-
-                            {blobUrl && (
-                                <a href={blobUrl} download={`export_${lang}.mp4`}>
-                                    <Button variant="outline" size="sm" className="gap-1.5">
-                                        <Download className="w-3.5 h-3.5" />
-                                        Download
-                                    </Button>
-                                </a>
-                            )}
                         </div>
                     </div>
                 );
             })}
 
-            {/* Export All — renders any unrendered languages, then downloads all */}
+            {/* Render All — renders any un-rendered languages in parallel */}
+            <Button
+                variant="outline"
+                className="w-full"
+                onClick={renderAll}
+                disabled={isExporting || anyRendering || allRendered}
+            >
+                {isExporting ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Rendering…</>
+                ) : (
+                    <><Video className="w-4 h-4 mr-2" />Render All Languages</>
+                )}
+            </Button>
+
+            {/* Continue to Add Music */}
             <Button
                 variant="gradient"
                 className="w-full"
-                onClick={exportAll}
-                disabled={isExporting || anyRendering}
+                onClick={() => setCurrentStep('add-music')}
+                disabled={anyRendering || !allRendered}
             >
-                {isExporting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Exporting...</>
+                Continue to Add Music <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+        </div>
+    );
+}
+
+// ============================================
+// Export Step (download with optional music mix)
+// ============================================
+
+function ExportStepContent() {
+    const {
+        selectedLanguages,
+        renderedVideos,
+        selectedTrackId, generatedTracks, musicVolume,
+        video,
+    } = useAppStore();
+
+    const [exportingLangs, setExportingLangs] = useState<Set<string>>(new Set());
+    const [exportProgress, setExportProgress] = useState<Record<string, number>>({});
+    const [exportErrors, setExportErrors] = useState<Record<string, string>>({});
+    const [exportedUrls, setExportedUrls] = useState<Record<string, string>>({});
+    const [isExportingAll, setIsExportingAll] = useState(false);
+
+    const selectedTrack = selectedTrackId ? generatedTracks.find(t => t.id === selectedTrackId) ?? null : null;
+
+    const getDownloadUrl = async (lang: string): Promise<string | null> => {
+        const renderedUrl = renderedVideos[lang];
+        if (!renderedUrl) return null;
+
+        // No music — use the rendered video directly
+        if (!selectedTrack) return renderedUrl;
+
+        // Already mixed for this language
+        if (exportedUrls[lang]) return exportedUrls[lang];
+
+        setExportingLangs(prev => new Set([...prev, lang]));
+        setExportErrors(prev => { const n = { ...prev }; delete n[lang]; return n; });
+        setExportProgress(prev => ({ ...prev, [lang]: 1 }));
+
+        try {
+            const renderedResp = await fetch(renderedUrl);
+            const renderedBlob = await renderedResp.blob();
+
+            const formData = new FormData();
+            formData.append('video', renderedBlob, `rendered_${lang}.mp4`);
+            formData.append('music', selectedTrack.blob, 'music.mp3');
+            formData.append('music_volume', String(musicVolume));
+
+            const progressInterval = setInterval(() => {
+                setExportProgress(prev => ({ ...prev, [lang]: Math.min(88, (prev[lang] ?? 1) + 3) }));
+            }, 1000);
+
+            const response = await fetch(api('/api/mix-music'), { method: 'POST', body: formData });
+            clearInterval(progressInterval);
+
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(errText || `HTTP ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            setExportedUrls(prev => ({ ...prev, [lang]: url }));
+            setExportProgress(prev => ({ ...prev, [lang]: 100 }));
+            return url;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Export failed';
+            setExportErrors(prev => ({ ...prev, [lang]: msg }));
+            setExportProgress(prev => ({ ...prev, [lang]: 0 }));
+            return null;
+        } finally {
+            setExportingLangs(prev => { const n = new Set(prev); n.delete(lang); return n; });
+        }
+    };
+
+    const downloadLang = async (lang: string) => {
+        const url = await getDownloadUrl(lang);
+        if (!url) return;
+        const stem = (video?.file.name ?? 'export').replace(/\.[^/.]+$/, '');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${stem}_${lang}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    };
+
+    const downloadAll = async () => {
+        setIsExportingAll(true);
+        for (const lang of selectedLanguages) {
+            if (renderedVideos[lang]) await downloadLang(lang);
+        }
+        setIsExportingAll(false);
+    };
+
+    const anyExporting = exportingLangs.size > 0;
+
+    return (
+        <div className="pt-4 space-y-3">
+            {/* Music mix info */}
+            {selectedTrack ? (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
+                    <Music className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span><span className="text-primary font-medium">{selectedTrack.label}</span> will be mixed at {Math.round(musicVolume * 100)}% volume</span>
+                </div>
+            ) : (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground">
+                    <Music className="w-3.5 h-3.5 shrink-0" />
+                    <span>No music selected — exporting rendered videos as-is</span>
+                </div>
+            )}
+
+            {selectedLanguages.map((lang) => {
+                const info = SUPPORTED_LANGUAGES.find(l => l.code === lang);
+                const renderedUrl = renderedVideos[lang];
+                const isExporting = exportingLangs.has(lang);
+                const progress = exportProgress[lang] ?? 0;
+                const error = exportErrors[lang];
+                const hasRendered = !!renderedUrl;
+
+                return (
+                    <div
+                        key={lang}
+                        className={cn(
+                            'rounded-xl border overflow-hidden',
+                            hasRendered ? 'border-border bg-surface-elevated' : 'border-dashed border-border bg-surface/50 opacity-60'
+                        )}
+                    >
+                        <div className="flex items-center gap-2 px-4 py-3">
+                            <span className="text-lg">{info?.flag}</span>
+                            <span className="font-semibold text-sm">{info?.name}</span>
+                            {!hasRendered && <span className="text-xs text-muted-foreground ml-auto">Not rendered</span>}
+                            {isExporting && <span className="text-xs text-muted-foreground ml-auto">{progress}%</span>}
+                            {error && <AlertCircle className="w-4 h-4 text-red-600 ml-auto" />}
+                        </div>
+
+                        {isExporting && (
+                            <div className="px-4 pb-2">
+                                <Progress value={progress} className="h-1" />
+                            </div>
+                        )}
+                        {error && <p className="px-4 pb-2 text-xs text-red-700 leading-tight">{error}</p>}
+
+                        {hasRendered && (
+                            <div className="flex gap-2 px-4 pb-3">
+                                <Button
+                                    variant="gradient"
+                                    size="sm"
+                                    className="flex-1"
+                                    onClick={() => downloadLang(lang)}
+                                    disabled={isExporting || isExportingAll}
+                                >
+                                    {isExporting ? (
+                                        <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />{selectedTrack ? 'Mixing…' : 'Downloading…'}</>
+                                    ) : (
+                                        <><Download className="w-3.5 h-3.5 mr-1.5" />{selectedTrack ? 'Mix & Download' : 'Download'}</>
+                                    )}
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+
+            {/* Download All */}
+            <Button
+                variant="outline"
+                className="w-full"
+                onClick={downloadAll}
+                disabled={isExportingAll || anyExporting}
+            >
+                {isExportingAll ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Exporting…</>
                 ) : (
-                    <><Download className="w-4 h-4 mr-2" />Export All Videos</>
+                    <><Download className="w-4 h-4 mr-2" />Download All</>
                 )}
             </Button>
         </div>
@@ -7096,7 +7568,7 @@ export default function Home() {
         setCurrentStep,
     } = useAppStore();
 
-    const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'translate-voiceover', 'dub', 'outro', 'export'];
+    const stepOrder: AppStep[] = ['upload', 'analyze', 'edit-text', 'translate', 'translate-voiceover', 'dub', 'outro', 'render', 'add-music', 'export'];
     const currentIndex = stepOrder.indexOf(currentStep);
 
     const getStepStatus = (stepId: AppStep) => {
@@ -7118,7 +7590,7 @@ export default function Home() {
             (stepId === 'translate' && isTranslatingText) ||
             (stepId === 'translate-voiceover' && isTranslatingVoiceover) ||
             (stepId === 'dub' && isGeneratingDubbing) ||
-            (stepId === 'export' && isExporting);
+            (stepId === 'render' && isExporting);
 
         return { isCompleted, isActive, isLocked, isProcessing };
     };
@@ -7131,6 +7603,8 @@ export default function Home() {
         { id: 'translate-voiceover' as AppStep, title: 'Translate Voiceover', description: 'Translate spoken script for dubbing', icon: <Mic className="w-4 h-4" />, content: <StepErrorBoundary><TranslateVoiceoverStepContent /></StepErrorBoundary> },
         { id: 'dub' as AppStep, title: 'Voice Dubbing', description: 'Clone voice and generate dubbed audio', icon: <Mic className="w-4 h-4" />, content: <StepErrorBoundary><DubStepContent /></StepErrorBoundary> },
         { id: 'outro' as AppStep, title: 'Outro', description: 'Add CTA and disclaimer', icon: <Film className="w-4 h-4" />, content: <StepErrorBoundary><OutroStepContent /></StepErrorBoundary> },
+        { id: 'render' as AppStep, title: 'Render', description: 'Render dubbed videos', icon: <Video className="w-4 h-4" />, content: <StepErrorBoundary><RenderStepContent /></StepErrorBoundary> },
+        { id: 'add-music' as AppStep, title: 'Add Music', description: 'Add background music to your video', icon: <Music className="w-4 h-4" />, content: <StepErrorBoundary><AddMusicStepContent /></StepErrorBoundary> },
         { id: 'export' as AppStep, title: 'Export', description: 'Download all translated videos', icon: <Download className="w-4 h-4" />, content: <StepErrorBoundary><ExportStepContent /></StepErrorBoundary> },
     ];
     const activeStep = stepConfigs.find((step) => step.id === currentStep) ?? stepConfigs[0];

@@ -409,7 +409,16 @@ export type AppStep =
     | 'translate-voiceover'
     | 'dub'
     | 'outro'
+    | 'render'
+    | 'add-music'
     | 'export';
+
+export interface GeneratedMusicTrack {
+    id: string;
+    label: string;
+    blob: Blob;
+    blobUrl: string;
+}
 
 export interface StepConfig {
     id: AppStep;
@@ -426,6 +435,8 @@ export const APP_STEPS: StepConfig[] = [
     { id: 'translate-voiceover', label: 'Translate Voiceover', description: 'Translate spoken script', icon: 'Mic2' },
     { id: 'dub', label: 'Dub', description: 'Voice dubbing', icon: 'Mic' },
     { id: 'outro', label: 'Outro', description: 'CTA & Disclaimer', icon: 'Film' },
+    { id: 'render', label: 'Render', description: 'Render dubbed videos', icon: 'Video' },
+    { id: 'add-music', label: 'Add Music', description: 'Background music', icon: 'Music' },
     { id: 'export', label: 'Export', description: 'Download videos', icon: 'Download' },
 ];
 
