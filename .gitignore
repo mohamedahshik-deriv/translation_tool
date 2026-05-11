@@ -17,6 +17,7 @@ pod-translation-app/.env*.local
 
 # Supabase temp files
 supabase/.temp/
+backend/supabase/.temp/
 
 # macOS
 .DS_Store
@@ -35,6 +36,9 @@ yarn-error.log*
 
 # agent
 .agents
+
+# Cursor logs and metadata
+.cursor/
 
 #Notebooks
 notebooks/

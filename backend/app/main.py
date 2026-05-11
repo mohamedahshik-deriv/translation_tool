@@ -14,7 +14,6 @@ from app.routes import (
     dubbing_status,
     dubbing_audio,
     generate_speech,
-    analyze_scenes,
 )
 
 limiter = Limiter(key_func=get_remote_address)
@@ -31,7 +30,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty
 # CORS — allow only the configured frontend origin(s)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=[
+        origin.strip()
+        for origin in settings.frontend_url.split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
@@ -46,7 +49,6 @@ app.include_router(start_dubbing.router, prefix="/api")
 app.include_router(dubbing_status.router, prefix="/api")
 app.include_router(dubbing_audio.router, prefix="/api")
 app.include_router(generate_speech.router, prefix="/api")
-app.include_router(analyze_scenes.router, prefix="/api")
 
 
 @app.get("/health")

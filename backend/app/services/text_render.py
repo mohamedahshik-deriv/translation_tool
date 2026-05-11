@@ -20,9 +20,7 @@ Font strategy (mirrors the frontend):
 from __future__ import annotations
 
 import io
-import json
 import re
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -465,26 +463,8 @@ def render_text_layer_to_png(
     """
     canvas = Image.new("RGBA", (video_width, video_height), (0, 0, 0, 0))
     draw   = ImageDraw.Draw(canvas)
-    # #region agent log
-    _debug_log_path = "/Users/mohamedahshik/Documents/projects/Translation Tool/POD Translation Automation_26__03_2026/.cursor/debug-54472a.log"
-    def _dbg(hypothesis_id: str, message: str, data: dict) -> None:
-        try:
-            with open(_debug_log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({
-                    "sessionId": "54472a",
-                    "runId": "preview-vs-export",
-                    "hypothesisId": hypothesis_id,
-                    "location": "text_render.py:render_text_layer_to_png",
-                    "message": message,
-                    "data": data,
-                    "timestamp": int(time.time() * 1000),
-                }, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-    # #endregion
 
     plain = strip_rich_markup(layer.content or "")
-    raw_content = layer.content or ""
     if not plain.strip():
         buf = io.BytesIO()
         canvas.save(buf, format="PNG")
@@ -516,21 +496,6 @@ def render_text_layer_to_png(
 
     short_side = min(video_width, video_height)
     base_size  = max(8, round(layer.font_size * (short_side / 1080)))
-    # #region agent log
-    _dbg("H3", "export_render_input", {
-        "is_arabic": is_arabic,
-        "layer_font_size": layer.font_size,
-        "base_size": base_size,
-        "max_width": max_width,
-        "max_lines": layer.max_lines,
-            "position_anchor": layer.position_anchor,
-            "zone_align": zone_align,
-            "effective_align": effective_align,
-        "content_length": len(plain),
-        "raw_content_length": len(raw_content),
-        "has_markup_tokens": ("{" in raw_content and "}" in raw_content) or ("[" in raw_content and "]" in raw_content),
-    })
-    # #endregion
 
     # ── Arabic path: ExtraBold + Inter fallback ───────────────────────────────
     if is_arabic:
@@ -559,19 +524,6 @@ def render_text_layer_to_png(
         lat_font = _find_font(best_size, bold=is_bold)
         logical_lines = _wrap_text_mixed(draw, plain, ar_font, lat_font, ar_cmap, max_width, MAX_LINES)
         lines = [_reshape_arabic(ln) for ln in logical_lines]
-        # #region agent log
-        plain_w_full = sum(int(draw.textlength(ch, font=ar_font)) for ch in plain if not ch.isspace())
-        reshaped_full = _reshape_arabic(plain)
-        reshaped_w_full = sum(int(draw.textlength(ch, font=ar_font)) for ch in reshaped_full if not ch.isspace())
-        _dbg("H5", "export_render_arabic_layout", {
-            "best_size": best_size,
-            "line_count": len(lines),
-            "logical_lines": logical_lines,
-            "plain_char_width_sum": plain_w_full,
-            "reshaped_char_width_sum": reshaped_w_full,
-            "max_width": max_width,
-        })
-        # #endregion
 
         if not lines:
             buf = io.BytesIO()
@@ -668,13 +620,6 @@ def render_text_layer_to_png(
 
     font  = font_loader(best_size, bold=is_bold)
     lines = _wrap_text(draw, font, display_text, max_width, MAX_LINES)
-    # #region agent log
-    _dbg("H4", "export_render_latin_layout", {
-        "best_size": best_size,
-        "line_count": len(lines),
-        "lines": lines,
-    })
-    # #endregion
 
     if not lines:
         buf = io.BytesIO()

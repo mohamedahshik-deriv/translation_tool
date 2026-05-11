@@ -5329,7 +5329,10 @@ function TranslateStepContent() {
                             textLayers={previewTextLayers}
                             fps={video.frameRate ?? 30}
                             videoFile={video.file}
+                            videoWidth={video.width}
+                            videoHeight={video.height}
                             overlayRenderMode="canvas"
+                            gradientDirection={previewSegment.gradientDirection}
                             applyLogo={applyLogo}
                             isOutro={previewSegment.isOutro ?? false}
                         />
