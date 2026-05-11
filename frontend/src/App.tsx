@@ -7195,28 +7195,35 @@ function RenderStepContent() {
     const autoAttemptedLangsRef = useRef<Set<string>>(new Set());
 
     const allReadyTracks = dubbingTracks.filter(t => t.status === 'ready' && t.audioBlobUrl);
+    const readyTrackIdsKey = useMemo(
+        () => allReadyTracks.map((t) => t.id).sort().join('|'),
+        [allReadyTracks]
+    );
 
     // Measure audio durations — still needed to compute per-scene playbackRate for FFmpeg
     const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
     useEffect(() => {
-        if (allReadyTracks.length === 0) return;
+        const tracks = dubbingTracks.filter((t) => t.status === 'ready' && t.audioBlobUrl);
+        if (tracks.length === 0) {
+            setAudioDurations({});
+            return;
+        }
         let cancelled = false;
         const measure = async () => {
             const durations: Record<string, number> = {};
-            await Promise.all(allReadyTracks.map(track => new Promise<void>(resolve => {
+            await Promise.all(tracks.map(track => new Promise<void>(resolve => {
                 if (!track.audioBlobUrl) { resolve(); return; }
                 const a = new Audio();
                 a.preload = 'metadata';
                 a.onloadedmetadata = () => { durations[track.id] = a.duration; resolve(); };
-                a.onerror = () => resolve();
+                a.onerror = () => { durations[track.id] = 0; resolve(); };
                 a.src = track.audioBlobUrl!;
             })));
             if (!cancelled) setAudioDurations(durations);
         };
         measure();
         return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [allReadyTracks.length]);
+    }, [readyTrackIdsKey, dubbingTracks]);
 
     // Render one language via the backend. Returns the blob URL on success.
     const renderLanguage = async (lang: string): Promise<string | null> => {
@@ -7413,9 +7420,32 @@ function RenderStepContent() {
     const allRendered = selectedLanguages.every(lang => !!renderedVideos[lang]);
     const failedLanguages = selectedLanguages.filter((lang) => !!renderErrors[lang] && !renderedVideos[lang]);
 
+    const langsAwaitingFirstRender = useMemo(
+        () => selectedLanguages.filter((l) => !renderedVideos[l] && !renderErrors[l]),
+        [selectedLanguages, renderedVideos, renderErrors]
+    );
+
+    const isAudioTimingReadyForLangs = useCallback((langs: string[]) => {
+        if (langs.length === 0) return true;
+        return langs.every((lang) => {
+            const langTracks = allReadyTracks.filter((t) => t.languageCode === lang);
+            return segments.every((seg) => {
+                const track = langTracks.find((t) => t.segmentId === seg.id);
+                if (!track) return true;
+                return (audioDurations[track.id] ?? 0) > 0;
+            });
+        });
+    }, [allReadyTracks, segments, audioDurations]);
+
+    const isAudioTimingReadyForPendingRenders = useMemo(
+        () => isAudioTimingReadyForLangs(langsAwaitingFirstRender),
+        [isAudioTimingReadyForLangs, langsAwaitingFirstRender]
+    );
+
     const renderAll = async (languages?: string[]) => {
         const pendingLanguages = (languages ?? selectedLanguages).filter((lang) => !renderedVideos[lang]);
         if (pendingLanguages.length === 0 || !video) return;
+        if (!isAudioTimingReadyForLangs(pendingLanguages)) return;
 
         setIsExporting(true);
         try {
@@ -7434,9 +7464,10 @@ function RenderStepContent() {
                 && !autoAttemptedLangsRef.current.has(lang)
         );
         if (pendingAutoLanguages.length === 0) return;
+        if (!isAudioTimingReadyForLangs(pendingAutoLanguages)) return;
         pendingAutoLanguages.forEach((lang) => autoAttemptedLangsRef.current.add(lang));
         void renderAll(pendingAutoLanguages);
-    }, [isExporting, anyRendering, selectedLanguages, renderedVideos, renderErrors, video]);
+    }, [isExporting, anyRendering, selectedLanguages, renderedVideos, renderErrors, video, isAudioTimingReadyForLangs]);
 
     const retryFailedLanguages = async () => {
         if (failedLanguages.length === 0) return;
@@ -7446,6 +7477,12 @@ function RenderStepContent() {
 
     return (
         <div className="pt-4 space-y-3">
+            {langsAwaitingFirstRender.length > 0 && !isExporting && !anyRendering && !isAudioTimingReadyForPendingRenders && (
+                <p className="text-xs text-muted-foreground px-1 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    Measuring dubbed audio for scene timing…
+                </p>
+            )}
             {selectedLanguages.map((lang) => {
                 const info = SUPPORTED_LANGUAGES.find(l => l.code === lang);
                 const isRendering = renderingLangs.has(lang);
@@ -7506,7 +7543,7 @@ function RenderStepContent() {
                     variant="outline"
                     className="w-full"
                     onClick={() => { void retryFailedLanguages(); }}
-                    disabled={isExporting || anyRendering}
+                    disabled={isExporting || anyRendering || !isAudioTimingReadyForLangs(failedLanguages)}
                 >
                     {isExporting ? (
                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Retrying failed languages…</>
