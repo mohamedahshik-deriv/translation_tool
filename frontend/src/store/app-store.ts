@@ -192,6 +192,21 @@ const initialState = {
     musicVolume: 0.3,
 };
 
+const normalizeLayerForSegment = (
+    layer: TextLayer,
+    isOutro: boolean
+): TextLayer => {
+    if (isOutro || layer.textStyle) return layer;
+    return { ...layer, textStyle: 'body' };
+};
+
+const isLayoutOverrideUpdate = (updates: Partial<TextLayer>): boolean => (
+    updates.positionX !== undefined
+    || updates.positionY !== undefined
+    || updates.positionAnchor !== undefined
+    || updates.fontSize !== undefined
+);
+
 export const useAppStore = create<AppState>((set, get) => ({
     ...initialState,
 
@@ -225,16 +240,32 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     setShouldAutoAnalyze: (shouldAutoAnalyze) => set({ shouldAutoAnalyze }),
 
-    setSegments: (segments) => set({ segments }),
+    setSegments: (segments) => set({
+        segments: segments.map((seg) => ({
+            ...seg,
+            textLayers: seg.textLayers.map((layer) => normalizeLayerForSegment(layer, !!seg.isOutro)),
+        })),
+    }),
 
     addSegment: (segment) => set((state) => ({
-        segments: [...state.segments, segment]
+        segments: [
+            ...state.segments,
+            {
+                ...segment,
+                textLayers: segment.textLayers.map((layer) => normalizeLayerForSegment(layer, !!segment.isOutro)),
+            },
+        ],
     })),
 
     updateSegment: (id, updates) => set((state) => ({
-        segments: state.segments.map((seg) =>
-            seg.id === id ? { ...seg, ...updates } : seg
-        ),
+        segments: state.segments.map((seg) => {
+            if (seg.id !== id) return seg;
+            const next = { ...seg, ...updates };
+            return {
+                ...next,
+                textLayers: next.textLayers.map((layer) => normalizeLayerForSegment(layer, !!next.isOutro)),
+            };
+        }),
     })),
 
     setManualOutroId: (id) => set({ manualOutroId: id }),
@@ -242,10 +273,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     setOutroSegment: (id) => set((state) => ({
         manualOutroId: id,
-        segments: state.segments.map((seg) => ({
-            ...seg,
-            isOutro: seg.id === id,
-        })),
+        segments: state.segments.map((seg) => {
+            const isOutro = seg.id === id;
+            return {
+                ...seg,
+                isOutro,
+                textLayers: seg.textLayers.map((layer) => normalizeLayerForSegment(layer, isOutro)),
+            };
+        }),
     })),
 
     setActiveSegmentId: (id) => set({ activeSegmentId: id }),
@@ -253,23 +288,52 @@ export const useAppStore = create<AppState>((set, get) => ({
     addTextLayer: (segmentId, textLayer) => set((state) => ({
         segments: state.segments.map((seg) =>
             seg.id === segmentId
-                ? { ...seg, textLayers: [...seg.textLayers, textLayer] }
+                ? { ...seg, textLayers: [...seg.textLayers, normalizeLayerForSegment(textLayer, !!seg.isOutro)] }
                 : seg
         ),
     })),
 
-    updateTextLayer: (segmentId, layerId, updates) => set((state) => ({
-        segments: state.segments.map((seg) =>
+    updateTextLayer: (segmentId, layerId, updates) => set((state) => {
+        let updatedLayer: TextLayer | null = null;
+        const segments = state.segments.map((seg) =>
             seg.id === segmentId
                 ? {
                     ...seg,
-                    textLayers: seg.textLayers.map((layer) =>
-                        layer.id === layerId ? { ...layer, ...updates } : layer
-                    ),
+                    textLayers: seg.textLayers.map((layer) => {
+                        if (layer.id !== layerId) return layer;
+                        const nextLayer = normalizeLayerForSegment(
+                            { ...layer, ...updates },
+                            !!seg.isOutro
+                        );
+                        updatedLayer = nextLayer;
+                        return nextLayer;
+                    }),
                 }
                 : seg
-        ),
-    })),
+        );
+
+        if (!updatedLayer || !isLayoutOverrideUpdate(updates)) {
+            return { segments };
+        }
+
+        const newTranslations = new Map(state.translations);
+        const existing = newTranslations.get(layerId);
+        if (existing && existing.length > 0) {
+            const syncedLayer = updatedLayer;
+            newTranslations.set(
+                layerId,
+                existing.map((tr) => ({
+                    ...tr,
+                    positionXOverride: syncedLayer.positionX,
+                    positionYOverride: syncedLayer.positionY,
+                    positionAnchorOverride: syncedLayer.positionAnchor,
+                    fontSizeOverride: syncedLayer.fontSize,
+                }))
+            );
+        }
+
+        return { segments, translations: newTranslations };
+    }),
 
     removeTextLayer: (segmentId, layerId) => set((state) => ({
         segments: state.segments.map((seg) =>

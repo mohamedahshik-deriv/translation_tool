@@ -5140,6 +5140,23 @@ function TranslateStepContent() {
     }) ?? [];
 
     const langInfo = (code: string) => SUPPORTED_LANGUAGES.find(l => l.code === code);
+    const getGridKeyFromLayout = (
+        positionX: number,
+        positionY: number,
+        positionAnchor: 'top' | 'middle' | 'bottom'
+    ): GridPosition | 'Custom' => {
+        const resKey = video ? `${video.width}x${video.height}` as VideoResolution : '1080x1920';
+        const posGrid = POSITION_GRID[resKey] ?? POSITION_GRID['1080x1920'];
+        const match = GRID_ORDER.find((key) => {
+            const p = posGrid[key];
+            return (
+                Math.abs(positionX - p.x) < 20
+                && Math.abs(positionY - p.y) < 20
+                && positionAnchor === p.anchor
+            );
+        });
+        return match ?? 'Custom';
+    };
 
     return (
         <div className="pt-4 space-y-4">
@@ -5323,6 +5340,12 @@ function TranslateStepContent() {
                         {previewSegment?.textLayers.map(layer => {
                             const langTranslations = translations.get(layer.id);
                             const tr = langTranslations?.find(t => t.languageCode === activePreviewLang);
+                            const appliedX = tr?.positionXOverride ?? layer.positionX;
+                            const appliedY = tr?.positionYOverride ?? layer.positionY;
+                            const appliedAnchor = tr?.positionAnchorOverride ?? layer.positionAnchor ?? 'middle';
+                            const appliedFontSize = tr?.fontSizeOverride ?? layer.fontSize;
+                            const appliedGrid = getGridKeyFromLayout(appliedX, appliedY, appliedAnchor);
+                            const compareLangCodes = Array.from(new Set([textSrcLangCode, ...selectedLanguages]));
                             const editKey = `${layer.id}-${activePreviewLang}`;
                             const isEditing = editingTranslation === editKey;
                             return (
@@ -5356,6 +5379,43 @@ function TranslateStepContent() {
                                                         <span>Edit</span>
                                                     </button>
                                                 )}
+                                            </div>
+
+                                            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                                    Font: {Math.round(appliedFontSize)}px
+                                                </span>
+                                                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                                                    Grid: {appliedGrid} ({appliedAnchor})
+                                                </span>
+                                                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                                                    x:{Math.round(appliedX)} y:{Math.round(appliedY)}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-1 rounded-md border border-border/70 bg-background/50 px-2 py-1.5">
+                                                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">All languages applied layout</div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                                                    {compareLangCodes.map((code) => {
+                                                        const langTr = langTranslations?.find(t => t.languageCode === code);
+                                                        const x = langTr?.positionXOverride ?? layer.positionX;
+                                                        const y = langTr?.positionYOverride ?? layer.positionY;
+                                                        const anchor = langTr?.positionAnchorOverride ?? layer.positionAnchor ?? 'middle';
+                                                        const fontSize = langTr?.fontSizeOverride ?? layer.fontSize;
+                                                        const gridKey = getGridKeyFromLayout(x, y, anchor);
+                                                        const info = langInfo(code);
+                                                        return (
+                                                            <div key={`${layer.id}-${code}`} className="flex items-center justify-between gap-2 text-[10px]">
+                                                                <span className="text-muted-foreground truncate">
+                                                                    {info?.flag} {info?.name ?? code}
+                                                                </span>
+                                                                <span className="font-mono text-muted-foreground">
+                                                                    {Math.round(fontSize)}px · {gridKey}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
 
                                             {isEditing ? (
