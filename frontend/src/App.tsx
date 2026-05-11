@@ -5798,6 +5798,7 @@ function DubPreviewPlayer({
     const audioRef = useRef<HTMLAudioElement>(null);
     const [previewLang, setPreviewLang] = useState<string | null>(null);
     const [activeScene, setActiveScene] = useState(0);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const readyTracks = tracks.filter(t => t.status === 'ready' && t.audioBlobUrl);
     const dubbedLanguages = [...new Set(readyTracks.map(t => t.languageCode))];
     // Show only languages that actually have dubbed tracks; don't force-inject EN
@@ -5917,91 +5918,100 @@ function DubPreviewPlayer({
 
     return (
         <div className="p-4 rounded-lg bg-surface-elevated border border-border space-y-3">
-            <div className="flex items-center gap-3">
+            <button
+                type="button"
+                onClick={() => setIsPreviewOpen(prev => !prev)}
+                className="w-full flex items-center gap-3 text-left"
+            >
                 <Play className="w-5 h-5 text-primary" />
                 <span className="font-medium">Preview Dubbed Video</span>
-            </div>
+                <ChevronDown className={cn("w-4 h-4 ml-auto transition-transform", isPreviewOpen && "rotate-180")} />
+            </button>
 
-            {/* Language tabs */}
-            <div className="flex flex-wrap gap-1.5">
-                {languages.map(lang => {
-                    const info = SUPPORTED_LANGUAGES.find(l => l.code === lang);
-                    return (
-                        <button
-                            key={lang}
-                            onClick={() => {
-                                setPreviewLang(lang);
-                                audioRef.current?.pause();
-                            }}
-                            className={cn(
-                                'px-2.5 py-1 rounded-md text-xs font-medium transition-colors border',
-                                previewLang === lang
-                                    ? 'bg-primary text-primary-foreground border-primary'
-                                    : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/50'
-                            )}
-                        >
-                            {info?.flag} {info?.name ?? lang}
-                        </button>
-                    );
-                })}
-            </div>
+            {isPreviewOpen && (
+                <>
+                    {/* Language tabs */}
+                    <div className="flex flex-wrap gap-1.5">
+                        {languages.map(lang => {
+                            const info = SUPPORTED_LANGUAGES.find(l => l.code === lang);
+                            return (
+                                <button
+                                    key={lang}
+                                    onClick={() => {
+                                        setPreviewLang(lang);
+                                        audioRef.current?.pause();
+                                    }}
+                                    className={cn(
+                                        'px-2.5 py-1 rounded-md text-xs font-medium transition-colors border',
+                                        previewLang === lang
+                                            ? 'bg-primary text-primary-foreground border-primary'
+                                            : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/50'
+                                    )}
+                                >
+                                    {info?.flag} {info?.name ?? lang}
+                                </button>
+                            );
+                        })}
+                    </div>
 
-            {/* Scene tabs (only for per-segment tracks, not full-video) */}
-            {!isFullVideo && segs.length > 1 && (
-                <div className="flex gap-1.5 flex-wrap">
-                    {segs.map((_, i) => (
-                        <button
-                            key={i}
-                            onClick={() => {
-                                setActiveScene(i);
-                                audioRef.current?.pause();
-                            }}
-                            className={cn(
-                                'px-3 py-1 rounded-lg text-xs font-medium border transition-all',
-                                activeScene === i
-                                    ? 'bg-primary/20 border-primary text-primary'
-                                    : 'border-border hover:border-primary/50 text-muted-foreground'
-                            )}
-                        >
-                            {segs[i]?.isOutro ? 'Outro' : `Scene ${i + 1}`}
-                        </button>
-                    ))}
-                </div>
-            )}
+                    {/* Scene tabs (only for per-segment tracks, not full-video) */}
+                    {!isFullVideo && segs.length > 1 && (
+                        <div className="flex gap-1.5 flex-wrap">
+                            {segs.map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => {
+                                        setActiveScene(i);
+                                        audioRef.current?.pause();
+                                    }}
+                                    className={cn(
+                                        'px-3 py-1 rounded-lg text-xs font-medium border transition-all',
+                                        activeScene === i
+                                            ? 'bg-primary/20 border-primary text-primary'
+                                            : 'border-border hover:border-primary/50 text-muted-foreground'
+                                    )}
+                                >
+                                    {segs[i]?.isOutro ? 'Outro' : `Scene ${i + 1}`}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
-            {/* Video preview with text overlays — plays dubbed audio when video plays */}
-            {previewSegment && (() => {
-                // Force-mute whenever a dubbed track exists to avoid original+dubbed overlap.
-                const shouldForceMute = !!currentAudioTrack;
-                return (
-                    <SceneVideoPlayer
-                        videoUrl={videoUrl}
-                        startTime={previewSegment.timecode.startTime}
-                        endTime={previewSegment.timecode.endTime}
-                        textLayers={previewTextLayers}
-                        fps={videoFrameRate ?? 30}
-                        videoFile={videoFile ?? null}
-                        onPlayStateChange={handlePlayStateChange}
-                        onSceneEnd={handleSceneEnd}
-                        forceMuted={shouldForceMute ? true : undefined}
-                        playbackRate={computedPlaybackRate}
-                        overlayRenderMode="canvas"
-                        applyLogo={applyLogo}
-                        isOutro={previewSegment.isOutro ?? false}
-                    />
-                );
-            })()}
+                    {/* Video preview with text overlays — plays dubbed audio when video plays */}
+                    {previewSegment && (() => {
+                        // Force-mute whenever a dubbed track exists to avoid original+dubbed overlap.
+                        const shouldForceMute = !!currentAudioTrack;
+                        return (
+                            <SceneVideoPlayer
+                                videoUrl={videoUrl}
+                                startTime={previewSegment.timecode.startTime}
+                                endTime={previewSegment.timecode.endTime}
+                                textLayers={previewTextLayers}
+                                fps={videoFrameRate ?? 30}
+                                videoFile={videoFile ?? null}
+                                onPlayStateChange={handlePlayStateChange}
+                                onSceneEnd={handleSceneEnd}
+                                forceMuted={shouldForceMute ? true : undefined}
+                                playbackRate={computedPlaybackRate}
+                                overlayRenderMode="canvas"
+                                applyLogo={applyLogo}
+                                isOutro={previewSegment.isOutro ?? false}
+                            />
+                        );
+                    })()}
 
-            {/* Hidden audio element for synced dubbed audio (non-EN or EN with generated TTS).
-                key forces a clean remount when switching languages so the browser loads the new source. */}
-            {currentAudioTrack?.audioBlobUrl && (
-                <audio
-                    key={currentAudioTrack.id}
-                    ref={audioRef}
-                    src={currentAudioTrack.audioBlobUrl}
-                    preload="auto"
-                    onEnded={() => { sceneEndedRef.current = false; }}
-                />
+                    {/* Hidden audio element for synced dubbed audio (non-EN or EN with generated TTS).
+                        key forces a clean remount when switching languages so the browser loads the new source. */}
+                    {currentAudioTrack?.audioBlobUrl && (
+                        <audio
+                            key={currentAudioTrack.id}
+                            ref={audioRef}
+                            src={currentAudioTrack.audioBlobUrl}
+                            preload="auto"
+                            onEnded={() => { sceneEndedRef.current = false; }}
+                        />
+                    )}
+                </>
             )}
         </div>
     );
@@ -7182,6 +7192,7 @@ function RenderStepContent() {
     const [renderProgress, setRenderProgress] = useState<Record<string, number>>({});
     const [renderErrors, setRenderErrors] = useState<Record<string, string>>({});
     const [renderingLangs, setRenderingLangs] = useState<Set<string>>(new Set());
+    const autoAttemptedLangsRef = useRef<Set<string>>(new Set());
 
     const allReadyTracks = dubbingTracks.filter(t => t.status === 'ready' && t.audioBlobUrl);
 
@@ -7369,7 +7380,17 @@ function RenderStepContent() {
 
             if (!response.ok) {
                 const errText = await response.text();
-                throw new Error(errText || `HTTP ${response.status}`);
+                let parsedError = '';
+                try {
+                    const parsed = JSON.parse(errText) as { detail?: string; error?: string; message?: string };
+                    parsedError = parsed.detail ?? parsed.error ?? parsed.message ?? '';
+                } catch {
+                    parsedError = '';
+                }
+                if (response.status === 429) {
+                    throw new Error('Rate limit reached (max 5 renders/min). Wait about 1 minute, then click "Retry Failed Languages".');
+                }
+                throw new Error(parsedError || errText || `HTTP ${response.status}`);
             }
 
             const blob = await response.blob();
@@ -7388,14 +7409,40 @@ function RenderStepContent() {
         }
     };
 
-    const renderAll = async () => {
+    const anyRendering = renderingLangs.size > 0;
+    const allRendered = selectedLanguages.every(lang => !!renderedVideos[lang]);
+    const failedLanguages = selectedLanguages.filter((lang) => !!renderErrors[lang] && !renderedVideos[lang]);
+
+    const renderAll = async (languages?: string[]) => {
+        const pendingLanguages = (languages ?? selectedLanguages).filter((lang) => !renderedVideos[lang]);
+        if (pendingLanguages.length === 0 || !video) return;
+
         setIsExporting(true);
-        await Promise.all(selectedLanguages.map(lang => renderLanguage(lang)));
-        setIsExporting(false);
+        try {
+            await Promise.all(pendingLanguages.map((lang) => renderLanguage(lang)));
+        } finally {
+            setIsExporting(false);
+        }
     };
 
-    const allRendered = selectedLanguages.every(lang => !!renderedVideos[lang]);
-    const anyRendering = renderingLangs.size > 0;
+    useEffect(() => {
+        if (isExporting || anyRendering) return;
+        const pendingAutoLanguages = selectedLanguages.filter(
+            (lang) =>
+                !renderedVideos[lang]
+                && !renderErrors[lang]
+                && !autoAttemptedLangsRef.current.has(lang)
+        );
+        if (pendingAutoLanguages.length === 0) return;
+        pendingAutoLanguages.forEach((lang) => autoAttemptedLangsRef.current.add(lang));
+        void renderAll(pendingAutoLanguages);
+    }, [isExporting, anyRendering, selectedLanguages, renderedVideos, renderErrors, video]);
+
+    const retryFailedLanguages = async () => {
+        if (failedLanguages.length === 0) return;
+        failedLanguages.forEach((lang) => autoAttemptedLangsRef.current.delete(lang));
+        await renderAll(failedLanguages);
+    };
 
     return (
         <div className="pt-4 space-y-3">
@@ -7450,41 +7497,24 @@ function RenderStepContent() {
                             </div>
                         )}
 
-                        {/* Action buttons */}
-                        <div className="flex gap-2 px-4 pb-3">
-                            <Button
-                                variant={isDone ? 'outline' : 'gradient'}
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => renderLanguage(lang)}
-                                disabled={isRendering || isExporting}
-                            >
-                                {isRendering ? (
-                                    <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Rendering…</>
-                                ) : isDone ? (
-                                    <><Video className="w-3.5 h-3.5 mr-1.5" />Re-render</>
-                                ) : (
-                                    <><Video className="w-3.5 h-3.5 mr-1.5" />Render</>
-                                )}
-                            </Button>
-                        </div>
                     </div>
                 );
             })}
 
-            {/* Render All — renders any un-rendered languages in parallel */}
-            <Button
-                variant="outline"
-                className="w-full"
-                onClick={renderAll}
-                disabled={isExporting || anyRendering || allRendered}
-            >
-                {isExporting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Rendering…</>
-                ) : (
-                    <><Video className="w-4 h-4 mr-2" />Render All Languages</>
-                )}
-            </Button>
+            {failedLanguages.length > 0 && (
+                <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { void retryFailedLanguages(); }}
+                    disabled={isExporting || anyRendering}
+                >
+                    {isExporting ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Retrying failed languages…</>
+                    ) : (
+                        <><RefreshCw className="w-4 h-4 mr-2" />Retry Failed Languages</>
+                    )}
+                </Button>
+            )}
 
             {/* Continue to Add Music */}
             <Button
