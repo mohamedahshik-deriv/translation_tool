@@ -2785,6 +2785,8 @@ function SceneVideoPlayer({
     onLayerFontSizeResolved,
     overlayRenderMode = 'dom',
     gradientDirection,
+    applyLogo = false,
+    isOutro = false,
 }: {
     videoUrl: string;
     startTime: number;
@@ -2812,6 +2814,10 @@ function SceneVideoPlayer({
     overlayRenderMode?: 'dom' | 'canvas';
     /** Gradient PNG overlay direction — renders matching asset below text layers. */
     gradientDirection?: 'top' | 'bottom' | 'left' | 'right';
+    /** Global logo toggle; hidden on outro scenes. */
+    applyLogo?: boolean;
+    /** Whether this preview represents the outro scene. */
+    isOutro?: boolean;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -3196,6 +3202,11 @@ function SceneVideoPlayer({
             displayRect.height > 0 ? displayRect.height : videoDims.height
         )
     );
+    const nativeVideoWidth = Math.max(1, Math.round(videoWidth ?? videoDims.width ?? 1080));
+    const nativeVideoHeight = Math.max(1, Math.round(videoHeight ?? videoDims.height ?? 1920));
+    const logoLeft = displayRect.left + (64 / nativeVideoWidth) * displayRect.width;
+    const logoTop = displayRect.top + (64 / nativeVideoHeight) * displayRect.height;
+    const logoHeight = (64 / nativeVideoHeight) * displayRect.height;
 
     useEffect(() => {
         if (overlayRenderMode !== 'canvas') {
@@ -3310,6 +3321,23 @@ function SceneVideoPlayer({
                             top: `${displayRect.top}px`,
                             width: `${displayRect.width}px`,
                             height: `${displayRect.height}px`,
+                        }}
+                    />
+                )}
+
+                {/* Deriv logo overlay — fixed at native 64x64 offset, hidden for outro */}
+                {applyLogo && !isOutro && (
+                    <img
+                        src="/deriv_logo/DerivlogoActualsize.png"
+                        alt=""
+                        draggable={false}
+                        className="absolute pointer-events-none select-none"
+                        style={{
+                            zIndex: 10,
+                            left: `${logoLeft}px`,
+                            top: `${logoTop}px`,
+                            height: `${logoHeight}px`,
+                            width: 'auto',
                         }}
                     />
                 )}
@@ -3862,7 +3890,7 @@ function SceneVideoPlayer({
 let _scriptAutoPopulateLock = false;
 
 function EditTextStepContent() {
-    const { video, segments, setSegments, setCurrentStep, addTextLayer, removeTextLayer, updateTextLayer, scriptEntries, scriptAutoPopulated, setScriptAutoPopulated, outroConfig, suggestedTextColor, suggestedOutroTextColor } = useAppStore();
+    const { video, segments, setSegments, setCurrentStep, addTextLayer, removeTextLayer, updateTextLayer, scriptEntries, scriptAutoPopulated, setScriptAutoPopulated, outroConfig, suggestedTextColor, suggestedOutroTextColor, applyLogo, setApplyLogo } = useAppStore();
     const [activeSegment, setActiveSegment] = useState(0);
     const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
     const [showSafeArea, setShowSafeArea] = useState(false);
@@ -4182,6 +4210,8 @@ function EditTextStepContent() {
                         videoHeight={video.height}
                         overlayRenderMode="canvas"
                         gradientDirection={currentSegment?.gradientDirection}
+                        applyLogo={applyLogo}
+                        isOutro={currentSegment?.isOutro ?? false}
                         onLayerFontSizeResolved={(layerId, nativePx) => {
                             if (currentSegment) {
                                 const layer = currentSegment.textLayers.find(l => l.id === layerId);
@@ -4627,6 +4657,16 @@ function EditTextStepContent() {
                     </div>
                 ))}
 
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-border bg-surface-elevated cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={applyLogo}
+                        onChange={(e) => setApplyLogo(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-border accent-primary"
+                    />
+                    <span className="text-xs font-medium text-muted-foreground">Apply Logo</span>
+                </label>
+
                 {/* Gradient direction selector */}
                 {currentSegment && (
                     <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-surface-elevated">
@@ -4792,6 +4832,7 @@ function TranslateStepContent() {
         selectedLanguages, toggleLanguage, setCurrentStep,
         segments, video, translations, setTranslations, updateTranslation, isTranslatingText, setIsTranslatingText,
         detectedVoiceoverLanguage, outroConfig, setOutroConfig,
+        applyLogo,
     } = useAppStore();
 
     // Derive source language from task 2; fall back to EN when unknown
@@ -5272,6 +5313,8 @@ function TranslateStepContent() {
                             fps={video.frameRate ?? 30}
                             videoFile={video.file}
                             overlayRenderMode="canvas"
+                            applyLogo={applyLogo}
+                            isOutro={previewSegment.isOutro ?? false}
                         />
                     )}
 
@@ -5681,6 +5724,7 @@ function DubPreviewPlayer({
     segments: segs,
     translations: trans,
     videoHasAudio,
+    applyLogo,
 }: {
     tracks: import('@/types').DubbingTrack[];
     videoUrl: string;
@@ -5689,6 +5733,7 @@ function DubPreviewPlayer({
     segments: VideoSegment[];
     translations: Map<string, import('@/types').Translation[]>;
     videoHasAudio?: boolean | null;
+    applyLogo: boolean;
 }) {
     const audioRef = useRef<HTMLAudioElement>(null);
     const [previewLang, setPreviewLang] = useState<string | null>(null);
@@ -5881,6 +5926,8 @@ function DubPreviewPlayer({
                         forceMuted={shouldForceMute ? true : undefined}
                         playbackRate={computedPlaybackRate}
                         overlayRenderMode="canvas"
+                        applyLogo={applyLogo}
+                        isOutro={previewSegment.isOutro ?? false}
                     />
                 );
             })()}
@@ -5907,7 +5954,7 @@ function DubStepContent() {
         voiceoverTranslations, videoHasAudio,
         dubbingTracks, setDubbingTracks, updateDubbingTrack,
         isGeneratingDubbing, setIsGeneratingDubbing,
-        detectedVoiceoverLanguage,
+        detectedVoiceoverLanguage, applyLogo,
     } = useAppStore();
 
     const [dubMode, setDubMode] = useState<DubMode>('select');
@@ -6316,6 +6363,7 @@ function DubStepContent() {
                         segments={segments}
                         translations={translations}
                         videoHasAudio={videoHasAudio}
+                        applyLogo={applyLogo}
                     />
                 )}
 
@@ -6427,6 +6475,7 @@ function DubStepContent() {
                     segments={segments}
                     translations={translations}
                     videoHasAudio={videoHasAudio}
+                    applyLogo={applyLogo}
                 />
             )}
 
@@ -7066,7 +7115,7 @@ function RenderStepContent() {
     const {
         selectedLanguages, isExporting, setIsExporting,
         video, segments, translations, dubbingTracks, videoHasAudio, outroConfig,
-        renderedVideos, setRenderedVideo,
+        renderedVideos, setRenderedVideo, applyLogo,
         setCurrentStep,
     } = useAppStore();
 
@@ -7170,6 +7219,7 @@ function RenderStepContent() {
                     endTime: seg.timecode.endTime,
                     playbackRate,
                     hasAudio: !!audioBlobsPerScene[i],
+                    isOutro: seg.isOutro ?? false,
                     textLayers: tLayers,
                     gradientFileKey: undefined as string | undefined,
                 };
@@ -7221,6 +7271,19 @@ function RenderStepContent() {
             gradientUploads.forEach(({ key, blob }) => {
                 formData.append(key, blob, `${key}.png`);
             });
+            if (applyLogo) {
+                try {
+                    const logoRes = await fetch('/deriv_logo/DerivlogoActualsize.png');
+                    if (logoRes.ok) {
+                        const logoBlob = await logoRes.blob();
+                        formData.append('logo_file', logoBlob, 'deriv-logo.png');
+                    } else {
+                        console.warn('[export] logo PNG not found');
+                    }
+                } catch (e) {
+                    console.warn('[export] logo PNG fetch failed:', e);
+                }
+            }
             formData.append('config', JSON.stringify({
                 lang,
                 scenes: sceneConfigs,
@@ -7228,6 +7291,7 @@ function RenderStepContent() {
                 videoHeight: video.height,
                 fps: video.frameRate ?? 30,
                 videoHasAudio: videoHasAudio ?? false,
+                applyLogo,
             }));
 
             const progressInterval = setInterval(() => {

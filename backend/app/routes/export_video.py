@@ -77,6 +77,7 @@ class SceneCfg:
     endTime: float
     playbackRate: float
     hasAudio: bool
+    isOutro: bool = False
     textLayers: list[TextLayerCfg] = field(default_factory=list)
     gradientFileKey: Optional[str] = None
 
@@ -89,6 +90,7 @@ class ExportCfg:
     videoHeight: int
     fps: float
     videoHasAudio: bool
+    applyLogo: bool = False
 
 
 def _parse_config(raw: str) -> ExportCfg:
@@ -100,6 +102,7 @@ def _parse_config(raw: str) -> ExportCfg:
             endTime=s["endTime"],
             playbackRate=s.get("playbackRate", 1.0),
             hasAudio=s.get("hasAudio", True),
+            isOutro=s.get("isOutro", False),
             gradientFileKey=s.get("gradientFileKey"),
             textLayers=[
                 TextLayerCfg(
@@ -130,6 +133,7 @@ def _parse_config(raw: str) -> ExportCfg:
         videoHeight=d["videoHeight"],
         fps=d.get("fps", 30),
         videoHasAudio=d.get("videoHasAudio", True),
+        applyLogo=d.get("applyLogo", False),
     )
 
 
@@ -168,6 +172,7 @@ async def _process_scene(
     work_dir: Path,
     overlay_paths_by_key: dict[str, str],
     gradient_paths_by_key: dict[str, str],
+    logo_path: Optional[str],
 ) -> None:
     scene_dur = scene.endTime - scene.startTime
     rate = max(0.5, min(2.0, scene.playbackRate))
@@ -222,10 +227,12 @@ async def _process_scene(
     if audio_path:
         audio_input_idx = 1
 
-    # Input index ordering: 0=video, 1=audio (optional), then gradient (optional), then text PNGs
+    # Input index ordering: 0=video, 1=audio (optional), then gradient (optional),
+    # logo (optional), then text PNGs
     base_png_idx = 2 if audio_path else 1
     gradient_input_idx = base_png_idx if gradient_path else None
-    png_start_idx = base_png_idx + (1 if gradient_path else 0)
+    logo_input_idx = base_png_idx + (1 if gradient_path else 0) if logo_path else None
+    png_start_idx = base_png_idx + (1 if gradient_path else 0) + (1 if logo_path else 0)
 
     # 1. Trim + speed
     parts.append(
@@ -240,7 +247,13 @@ async def _process_scene(
         parts.append(f"[{v_label}][gradient_fmt]overlay=x=0:y=0[after_gradient]")
         v_label = "after_gradient"
 
-    # 3. Chain PNG overlays with per-layer animation (fade / slide-up / slide-down).
+    # 3. Composite logo PNG above gradient and below text layers.
+    if logo_path and logo_input_idx is not None:
+        parts.append(f"[{logo_input_idx}:v]format=rgba,scale=-1:64[logo_fmt]")
+        parts.append(f"[{v_label}][logo_fmt]overlay=x=64:y=64[after_logo]")
+        v_label = "after_logo"
+
+    # 4. Chain PNG overlays with per-layer animation (fade / slide-up / slide-down).
     #    PNG inputs are looped at the scene framerate so their stream PTS advances
     #    with the main video — fade st= values therefore fire at the correct moment.
     #    Slide offset: ~4.2% of video height (≈ 80 px on 1920 h, 45 px on 1080 h).
@@ -297,12 +310,14 @@ async def _process_scene(
     # Determine final video output label
     if png_layers:
         video_out_label = "vout"
+    elif logo_path:
+        video_out_label = "after_logo"
     elif gradient_path:
         video_out_label = "after_gradient"
     else:
         video_out_label = "trimmed"
 
-    # 4. Audio — use dubbed audio if available, otherwise silence.
+    # 5. Audio — use dubbed audio if available, otherwise silence.
     # Never extract [0:a] from the input video to prevent English audio leaking.
     if audio_path:
         audio_map = f"{audio_input_idx}:a"
@@ -322,6 +337,8 @@ async def _process_scene(
     # Gradient PNG input comes before text layer PNGs (composited first = below text)
     if gradient_path:
         cmd_args += ["-loop", "1", "-framerate", str(int(fps)), "-i", gradient_path]
+    if logo_path:
+        cmd_args += ["-loop", "1", "-framerate", str(int(fps)), "-i", logo_path]
     # Text layer PNG inputs: -loop 1 + -framerate gives each PNG a looping video stream
     # with proper PTS so the fade filter's st= parameter fires at the right time.
     for png_path, _ in png_layers:
@@ -432,6 +449,7 @@ async def render_video(
         audio_paths: dict[int, str] = {}
         overlay_paths_by_key: dict[str, str] = {}
         gradient_paths_by_key: dict[str, str] = {}
+        logo_path: Optional[str] = None
         overlay_key_re = re.compile(r"^overlay_\d+_\d+$")
         gradient_key_re = re.compile(r"^gradient_\d+$")
         for i in range(len(cfg.scenes)):
@@ -464,6 +482,14 @@ async def render_video(
                 gradient_path = str(work_dir / f"{key_str}.png")
                 Path(gradient_path).write_bytes(gradient_bytes)
                 gradient_paths_by_key[key_str] = gradient_path
+            elif key_str == "logo_file":
+                logo_bytes = await value.read()  # type: ignore[union-attr]
+                if len(logo_bytes) > 8 * 1024 * 1024:
+                    raise HTTPException(status_code=400, detail="Logo file too large")
+                if not logo_bytes.startswith(PNG_MAGIC):
+                    raise HTTPException(status_code=400, detail="Logo file is not PNG")
+                logo_path = str(work_dir / "logo_file.png")
+                Path(logo_path).write_bytes(logo_bytes)
 
         expected_overlay_keys = {
             tl.overlayFileKey
@@ -495,6 +521,7 @@ async def render_video(
                 work_dir=work_dir,
                 overlay_paths_by_key=overlay_paths_by_key,
                 gradient_paths_by_key=gradient_paths_by_key,
+                logo_path=logo_path if (cfg.applyLogo and not scene.isOutro) else None,
             )
             scene_paths.append(scene_out)
             print(f"[export-video] scene {i + 1}/{len(cfg.scenes)} done")

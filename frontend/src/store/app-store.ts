@@ -53,6 +53,8 @@ interface AppState {
     setOutroSegment: (id: string) => void;
     manualOutroId: string | null;
     setManualOutroId: (id: string | null) => void;
+    applyLogo: boolean;
+    setApplyLogo: (value: boolean) => void;
 
     // Active segment for editing
     activeSegmentId: string | null;
@@ -164,6 +166,7 @@ const initialState = {
     cutPoints: [] as number[],
     segments: [],
     manualOutroId: null as string | null,
+    applyLogo: false,
     activeSegmentId: null,
     selectedLanguages: ['EN'] as LanguageCode[],
     translations: new Map(),
@@ -235,6 +238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
     setManualOutroId: (id) => set({ manualOutroId: id }),
+    setApplyLogo: (value) => set({ applyLogo: value }),
 
     setOutroSegment: (id) => set((state) => ({
         manualOutroId: id,
