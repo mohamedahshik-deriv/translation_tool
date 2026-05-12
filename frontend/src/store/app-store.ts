@@ -294,23 +294,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
     updateTextLayer: (segmentId, layerId, updates) => set((state) => {
-        let updatedLayer: TextLayer | null = null;
         const segments = state.segments.map((seg) =>
             seg.id === segmentId
                 ? {
                     ...seg,
                     textLayers: seg.textLayers.map((layer) => {
                         if (layer.id !== layerId) return layer;
-                        const nextLayer = normalizeLayerForSegment(
+                        return normalizeLayerForSegment(
                             { ...layer, ...updates },
                             !!seg.isOutro
                         );
-                        updatedLayer = nextLayer;
-                        return nextLayer;
                     }),
                 }
                 : seg
         );
+
+        const targetSeg = segments.find((s) => s.id === segmentId);
+        const updatedLayer = targetSeg?.textLayers.find((l) => l.id === layerId) ?? null;
 
         if (!updatedLayer || !isLayoutOverrideUpdate(updates)) {
             return { segments };
@@ -319,15 +319,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         const newTranslations = new Map(state.translations);
         const existing = newTranslations.get(layerId);
         if (existing && existing.length > 0) {
-            const syncedLayer = updatedLayer;
             newTranslations.set(
                 layerId,
                 existing.map((tr) => ({
                     ...tr,
-                    positionXOverride: syncedLayer.positionX,
-                    positionYOverride: syncedLayer.positionY,
-                    positionAnchorOverride: syncedLayer.positionAnchor,
-                    fontSizeOverride: syncedLayer.fontSize,
+                    positionXOverride: updatedLayer.positionX,
+                    positionYOverride: updatedLayer.positionY,
+                    positionAnchorOverride: updatedLayer.positionAnchor,
+                    fontSizeOverride: updatedLayer.fontSize,
                 }))
             );
         }
